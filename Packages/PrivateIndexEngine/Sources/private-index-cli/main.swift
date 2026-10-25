@@ -58,7 +58,7 @@ func printHelp() {
 
     \(ANSI.bold)COMMANDS:\(ANSI.reset)
         \(ANSI.green)index\(ANSI.reset) <path>            Index documents in the specified directory
-        \(ANSI.green)watch\(ANSI.reset) [path] [--install-launchagent]  Run background watcher daemon for live folder monitoring
+        \(ANSI.green)watch\(ANSI.reset) [path] [--install-launchagent|--uninstall-launchagent]  Run background watcher daemon
         \(ANSI.green)search\(ANSI.reset) <query> [options] Run search for a query (default mode: hybrid)
         \(ANSI.green)stats\(ANSI.reset)                   Show database stats and indexed document counts
         \(ANSI.green)reset\(ANSI.reset)                   Clear database and purge all vector embeddings
@@ -67,6 +67,7 @@ func printHelp() {
     \(ANSI.bold)SEARCH OPTIONS:\(ANSI.reset)
         --mode <hybrid|vector|keyword>  Search retrieval mode (default: hybrid)
         --limit <N>                     Maximum number of results to return (default: 10)
+        --min-similarity <pct>          Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)
         --vector-weight <W>             Vector similarity weight for RRF in hybrid mode (default: 0.5)
         --keyword-weight <W>            BM25 keyword weight for RRF in hybrid mode (default: 0.5)
 
@@ -74,7 +75,9 @@ func printHelp() {
         pi index ~/Documents
         pi watch ~/Documents
         pi watch --install-launchagent
+        pi watch --uninstall-launchagent
         pi search "zero-cloud privacy architecture"
+        pi search "33 bond st" --min-similarity 25%
         pi search "ERR_404_NOT_FOUND" --mode keyword
         pi search "Apple Neural Engine" --mode hybrid --limit 5
         pi stats
@@ -112,15 +115,30 @@ func runIndex(path: String) async throws {
     """)
 }
 
+func parseSimilarity(_ raw: String) -> Float {
+    var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if s.hasSuffix("%") {
+        s = String(s.dropLast())
+    }
+    guard let val = Float(s) else { return 0.35 }
+    if val > 1.0 {
+        return max(0.0, min(1.0, val / 100.0))
+    }
+    return max(0.0, min(1.0, val))
+}
+
 func runSearch(
     query: String,
     limit: Int,
     mode: SearchMode = .hybrid,
     vectorWeight: Float = 0.5,
-    keywordWeight: Float = 0.5
+    keywordWeight: Float = 0.5,
+    minSimilarity: Float = 0.35
 ) async throws {
-    print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit))\(ANSI.reset)\n")
-    let (_, coordinator) = try setupEngine()
+    let simPct = Int(round(minSimilarity * 100))
+    let simInfo = mode == .keyword ? "" : ", min-similarity: \(simPct)%"
+    print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit)\(simInfo))\(ANSI.reset)\n")
+    let (store, coordinator) = try setupEngine()
 
     let startTime = Date()
     let results = try await coordinator.search(
@@ -128,16 +146,31 @@ func runSearch(
         limit: limit,
         mode: mode,
         vectorWeight: vectorWeight,
-        keywordWeight: keywordWeight
+        keywordWeight: keywordWeight,
+        minSimilarity: minSimilarity
     )
     let elapsed = Date().timeIntervalSince(startTime) * 1000
 
     if results.isEmpty {
-        print("\(ANSI.yellow)No matches found.\(ANSI.reset) Have you indexed any documents?")
+        let indexedCount = (try? store.getAllIndexedFiles().count) ?? 0
+        if indexedCount == 0 {
+            print("""
+            \(ANSI.yellow)No matches found.\(ANSI.reset) You haven't indexed any documents yet.
+              • Run \(ANSI.cyan)pi index <directory>\(ANSI.reset) to scan and index a folder.
+              • Run \(ANSI.cyan)pi watch [directory] --install-launchagent\(ANSI.reset) to watch 24/7.
+            """)
+        } else {
+            print("""
+            \(ANSI.yellow)No matches found for\(ANSI.reset) \"\(ANSI.bold)\(query)\(ANSI.reset)\" \(ANSI.dim)(across \(indexedCount) indexed file\(indexedCount == 1 ? "" : "s"))\(ANSI.reset).
+              • Try different keywords or a broader phrasing.
+              • Lower the similarity threshold: \(ANSI.cyan)pi search \"\(query)\" --min-similarity 20\(ANSI.reset)
+              • Try keyword mode for exact tokens: \(ANSI.cyan)pi search \"\(query)\" --mode keyword\(ANSI.reset)
+            """)
+        }
         return
     }
 
-    print("\(ANSI.cyan)Found \(results.count) results in \(String(format: "%.1f", elapsed))ms:\(ANSI.reset)\n")
+    print("\(ANSI.cyan)Found \(results.count) result\(results.count == 1 ? "" : "s") in \(String(format: "%.1f", elapsed))ms:\(ANSI.reset)\n")
 
     for (idx, r) in results.enumerated() {
         let fileName = URL(fileURLWithPath: r.filePath).lastPathComponent
@@ -154,15 +187,13 @@ func runSearch(
             matchPill = "[\(r.matchType)]"
         }
 
-        let scoreStr: String
-        if mode == .hybrid {
-            scoreStr = "fusion score: \(ANSI.bold)\(String(format: "%.4f", r.score))\(ANSI.reset)"
-        } else if mode == .vector {
-            let pct = Int(r.score * 100)
-            scoreStr = "\(ANSI.bold)\(pct)% match\(ANSI.reset)"
+        let pct: Int
+        if r.matchType == "vector" {
+            pct = max(0, min(100, Int(round((1.0 - r.distance) * 100))))
         } else {
-            scoreStr = "bm25 score: \(ANSI.bold)\(String(format: "%.4f", r.score))\(ANSI.reset)"
+            pct = max(0, min(100, Int(round(r.score * 100))))
         }
+        let scoreStr = "\(ANSI.bold)\(pct)% match\(ANSI.reset)"
 
         print("\(ANSI.bold)\(idx + 1). \(fileName)\(ANSI.reset)  \(matchPill) [\(scoreStr)]")
         print("   \(ANSI.dim)\(r.filePath)\(ANSI.reset)")
@@ -262,10 +293,12 @@ func installWatcherLaunchAgent(path: String) throws {
 
     try plistContent.write(to: plistURL, atomically: true, encoding: .utf8)
 
-    // Unload existing if loaded, then load new
+    // Unload existing if loaded (suppress stdout/stderr so unneeded "Unload failed" is not printed)
     let unloadProcess = Process()
     unloadProcess.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     unloadProcess.arguments = ["unload", plistURL.path]
+    unloadProcess.standardOutput = Pipe()
+    unloadProcess.standardError = Pipe()
     try? unloadProcess.run()
     unloadProcess.waitUntilExit()
 
@@ -283,6 +316,41 @@ func installWatcherLaunchAgent(path: String) throws {
       • Output Log:   \(ANSI.dim)\(logPath)\(ANSI.reset)
       • Error Log:    \(ANSI.dim)\(errPath)\(ANSI.reset)
       • Status:       Loaded into launchd (runs 24/7 headlessly on login)
+    """)
+}
+
+func uninstallWatcherLaunchAgent() throws {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let plistURL = home.appendingPathComponent("Library/LaunchAgents/com.privateindex.watcher.plist")
+
+    guard FileManager.default.fileExists(atPath: plistURL.path) else {
+        print("\(ANSI.yellow)LaunchAgent is not currently installed.\(ANSI.reset) (\(plistURL.path) does not exist)")
+        return
+    }
+
+    // Unload existing service, suppressing stderr/stdout
+    let unloadProcess = Process()
+    unloadProcess.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    unloadProcess.arguments = ["unload", plistURL.path]
+    unloadProcess.standardOutput = Pipe()
+    unloadProcess.standardError = Pipe()
+    try? unloadProcess.run()
+    unloadProcess.waitUntilExit()
+
+    let bootoutProcess = Process()
+    bootoutProcess.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    bootoutProcess.arguments = ["bootout", "gui/\(getuid())/com.privateindex.watcher"]
+    bootoutProcess.standardOutput = Pipe()
+    bootoutProcess.standardError = Pipe()
+    try? bootoutProcess.run()
+    bootoutProcess.waitUntilExit()
+
+    try FileManager.default.removeItem(at: plistURL)
+
+    print("""
+    \(ANSI.bold)\(ANSI.green)✔ LaunchAgent uninstalled successfully!\(ANSI.reset)
+      • Plist removed:  \(ANSI.dim)\(plistURL.path)\(ANSI.reset)
+      • Daemon stopped: \(ANSI.cyan)com.privateindex.watcher\(ANSI.reset)
     """)
 }
 
@@ -420,12 +488,14 @@ case "watch":
 
         \(ANSI.bold)OPTIONS:\(ANSI.reset)
             --install-launchagent    Generate and load launchd LaunchAgent to run 24/7 headlessly on login
+            --uninstall-launchagent  Unload and remove the background launchd LaunchAgent
             -h, --help               Display this help message
         """)
         exit(0)
     }
 
     var installLaunchAgent = false
+    var uninstallLaunchAgent = false
     var pathArg: String? = nil
 
     var i = 2
@@ -433,11 +503,24 @@ case "watch":
         if args[i] == "--install-launchagent" {
             installLaunchAgent = true
             i += 1
+        } else if args[i] == "--uninstall-launchagent" || args[i] == "--remove-launchagent" {
+            uninstallLaunchAgent = true
+            i += 1
         } else if !args[i].hasPrefix("-") && pathArg == nil {
             pathArg = args[i]
             i += 1
         } else {
             i += 1
+        }
+    }
+
+    if uninstallLaunchAgent {
+        do {
+            try uninstallWatcherLaunchAgent()
+            exit(0)
+        } catch {
+            print("\(ANSI.red)Error uninstalling LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
+            exit(1)
         }
     }
 
@@ -518,12 +601,14 @@ case "search":
         \(ANSI.bold)OPTIONS:\(ANSI.reset)
             --mode <hybrid|vector|keyword>   Search mode (default: hybrid)
             --limit <N>                      Maximum results to return (default: 10)
+            --min-similarity <pct>           Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)
             --vector-weight <W>              Vector similarity weight for RRF fusion (default: 0.5)
             --keyword-weight <W>             BM25 keyword weight for RRF fusion (default: 0.5)
             -h, --help                       Display this help message
 
         \(ANSI.bold)EXAMPLES:\(ANSI.reset)
             pi search "33 bond st"
+            pi search "33 bond st" --min-similarity 25%
             pi search "meeting notes" --mode hybrid --limit 5
             pi search "ERR_404_NOT_FOUND" --mode keyword
         """)
@@ -539,6 +624,7 @@ case "search":
     var mode: SearchMode = .hybrid
     var vectorWeight: Float = 0.5
     var keywordWeight: Float = 0.5
+    var minSimilarity: Float = 0.35
     var queryTerms: [String] = []
 
     var i = 2
@@ -566,6 +652,17 @@ case "search":
             }
             mode = parsedMode
             i += 1
+        } else if (arg == "--min-similarity" || arg == "--threshold"), i + 1 < args.count {
+            minSimilarity = parseSimilarity(args[i + 1])
+            i += 2
+        } else if arg.hasPrefix("--min-similarity=") {
+            let val = String(arg.dropFirst("--min-similarity=".count))
+            minSimilarity = parseSimilarity(val)
+            i += 1
+        } else if arg.hasPrefix("--threshold=") {
+            let val = String(arg.dropFirst("--threshold=".count))
+            minSimilarity = parseSimilarity(val)
+            i += 1
         } else if (arg == "--vector-weight" || arg == "--w-vector"), i + 1 < args.count, let weight = Float(args[i + 1]) {
             vectorWeight = weight
             i += 2
@@ -589,6 +686,7 @@ case "search":
     let searchMode = mode
     let searchVectorWeight = vectorWeight
     let searchKeywordWeight = keywordWeight
+    let searchMinSimilarity = minSimilarity
 
     Task {
         do {
@@ -597,7 +695,8 @@ case "search":
                 limit: searchLimit,
                 mode: searchMode,
                 vectorWeight: searchVectorWeight,
-                keywordWeight: searchKeywordWeight
+                keywordWeight: searchKeywordWeight,
+                minSimilarity: searchMinSimilarity
             )
             exit(0)
         } catch {

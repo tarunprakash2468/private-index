@@ -250,17 +250,19 @@ public actor IndexCoordinator {
     ///   - mode: Search mode: `.hybrid` (default), `.vector`, or `.keyword`.
     ///   - vectorWeight: Weight for vector similarity in RRF (default 0.5).
     ///   - keywordWeight: Weight for BM25 keyword matching in RRF (default 0.5).
+    ///   - minSimilarity: Minimum cosine similarity threshold (0.0 to 1.0) for vector matches (default 0.0).
     /// - Returns: Ranked search results with file paths, content snippets, scores, and match types.
     public func search(
         query: String,
         limit: Int = 10,
         mode: SearchMode = .hybrid,
         vectorWeight: Float = 0.5,
-        keywordWeight: Float = 0.5
+        keywordWeight: Float = 0.5,
+        minSimilarity: Float = 0.0
     ) async throws -> [SearchResultItem] {
         switch mode {
         case .vector:
-            return try await searchVector(query: query, limit: limit)
+            return try await searchVector(query: query, limit: limit, minSimilarity: minSimilarity)
 
         case .keyword:
             return try searchKeyword(query: query, limit: limit)
@@ -270,17 +272,20 @@ public actor IndexCoordinator {
                 query: query,
                 limit: limit,
                 vectorWeight: vectorWeight,
-                keywordWeight: keywordWeight
+                keywordWeight: keywordWeight,
+                minSimilarity: minSimilarity
             )
         }
     }
 
-    private func searchVector(query: String, limit: Int) async throws -> [SearchResultItem] {
+    private func searchVector(query: String, limit: Int, minSimilarity: Float = 0.0) async throws -> [SearchResultItem] {
         let queryVector = try await embeddingModel.generateEmbedding(for: query)
-        let rawResults = try vectorStore.search(queryVector: queryVector, limit: limit)
+        let candidateLimit = max(limit * 3, 50)
+        let rawResults = try vectorStore.search(queryVector: queryVector, limit: candidateLimit)
 
-        return rawResults.map { r in
+        let filtered = rawResults.compactMap { r -> SearchResultItem? in
             let score = max(0.0, 1.0 - r.distance)
+            guard score >= minSimilarity else { return nil }
             return SearchResultItem(
                 id: r.chunkId,
                 fileId: r.fileId,
@@ -291,6 +296,7 @@ public actor IndexCoordinator {
                 matchType: "vector"
             )
         }
+        return Array(filtered.prefix(limit))
     }
 
     private func searchKeyword(query: String, limit: Int) throws -> [SearchResultItem] {
@@ -316,7 +322,8 @@ public actor IndexCoordinator {
         query: String,
         limit: Int,
         vectorWeight: Float,
-        keywordWeight: Float
+        keywordWeight: Float,
+        minSimilarity: Float = 0.0
     ) async throws -> [SearchResultItem] {
         let candidateLimit = max(limit * 3, 50)
 
@@ -379,11 +386,21 @@ public actor IndexCoordinator {
         struct ScoredCandidate {
             let candidate: Candidate
             let fusionScore: Float
+            let normalizedScore: Float
             let matchType: String
         }
 
+        let maxPossibleRRF: Float = (vectorWeight / 61.0) + (keywordWeight / 61.0)
         var scored: [ScoredCandidate] = []
         for candidate in candidates.values {
+            let vSim = max(0.0, min(1.0, 1.0 - candidate.distance))
+
+            // If minSimilarity is set (> 0.0), filter out pure vector matches below the threshold.
+            // Keyword and hybrid matches are preserved because BM25 confirmed keyword presence.
+            if candidate.keywordRank == nil && vSim < minSimilarity {
+                continue
+            }
+
             var score: Float = 0.0
             if let vRank = candidate.vectorRank {
                 score += vectorWeight / Float(60 + vRank)
@@ -391,6 +408,8 @@ public actor IndexCoordinator {
             if let kRank = candidate.keywordRank {
                 score += keywordWeight / Float(60 + kRank)
             }
+
+            let normalizedScore: Float = maxPossibleRRF > 0 ? min(1.0, score / maxPossibleRRF) : score
 
             let matchType: String
             if candidate.vectorRank != nil && candidate.keywordRank != nil {
@@ -404,6 +423,7 @@ public actor IndexCoordinator {
             scored.append(ScoredCandidate(
                 candidate: candidate,
                 fusionScore: score,
+                normalizedScore: normalizedScore,
                 matchType: matchType
             ))
         }
@@ -422,7 +442,7 @@ public actor IndexCoordinator {
                 fileId: s.candidate.fileId,
                 filePath: s.candidate.filePath,
                 distance: s.candidate.distance,
-                score: s.fusionScore,
+                score: s.normalizedScore,
                 content: s.candidate.content,
                 matchType: s.matchType
             )
