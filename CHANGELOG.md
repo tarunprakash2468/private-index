@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.3.0...private-index-v0.3.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **cli:** resolve bundle resources on symlinked installs and support subcommand help ([a321ec4](https://github.com/tarunprakash2468/private-index/commit/a321ec448be95c5eddee05de6817e3f7b3ac6e17))
+* **formula:** correct v0.3.0 sha256 checksum and handle branch protection in sync step ([b3f24e6](https://github.com/tarunprakash2468/private-index/commit/b3f24e66468eb995f11bf064d8b85f5d9879ae9f))
+* **model:** register new_ones and new_zeros torch ops and scope SPM resource to vocab.txt ([a4ad7cc](https://github.com/tarunprakash2468/private-index/commit/a4ad7ccd35820e7931c85fb7c1ba53bde3f55134))
+* **model:** resolve new_ones op conversion in coremltools and scope SPM resources ([f8aea6b](https://github.com/tarunprakash2468/private-index/commit/f8aea6bc58a2b0f05109c45b2758e42f7fd56149))
+
 ## [0.3.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.2...private-index-v0.3.0) (2026-10-25)
 
 
