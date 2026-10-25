@@ -220,10 +220,11 @@ case "search":
     }
 
     let query = queryTerms.joined(separator: " ")
+    let searchLimit = limit
 
     Task {
         do {
-            try await runSearch(query: query, limit: limit)
+            try await runSearch(query: query, limit: searchLimit)
             exit(0)
         } catch {
             print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
