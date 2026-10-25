@@ -2,6 +2,8 @@ name: Release & Deployment
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -13,12 +15,29 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
+  release-please:
+    name: Release Please (Evaluate PRs & Tags)
+    runs-on: ubuntu-latest
+    if: github.repository == 'tarunprakash2468/private-index'
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   release-macos:
     name: Build & Publish macOS Release (.dmg & CLI)
     runs-on: macos-14
-
+    needs: [release-please]
+    if: ${{ always() && (needs.release-please.outputs.releases_created == 'true' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -26,14 +45,19 @@ jobs:
       - name: Determine Version
         id: version_step
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
+          if [ -n "${{ needs.release-please.outputs.version }}" ]; then
+            VER="${{ needs.release-please.outputs.version }}"
+            TAG="${{ needs.release-please.outputs.tag_name }}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
             VER="${{ github.event.inputs.version }}"
+            TAG="v${VER}"
           else
             VER="${GITHUB_REF#refs/tags/v}"
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
           echo "version=${VER}" >> $GITHUB_OUTPUT
-          echo "tag=v${VER}" >> $GITHUB_OUTPUT
-          echo "Building version: ${VER}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VER} (tag: ${TAG})"
 
       - name: Select Xcode
         run: |
@@ -50,23 +74,22 @@ jobs:
           shasum -a 256 *.dmg *.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version_step.outputs.tag }}
-          name: "Private Index ${{ steps.version_step.outputs.version }}"
-          files: |
-            dist/*.dmg
-            dist/*.tar.gz
-            dist/SHA256SUMS.txt
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+      - name: Upload Assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version_step.outputs.tag }}"
+          # Upload assets to existing release or create release if manual run
+          gh release upload "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt --clobber || \
+          gh release create "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt \
+            --title "Private Index ${{ steps.version_step.outputs.version }}" \
+            --generate-notes
 
   deploy-ios:
     name: Deploy iOS to Apple TestFlight
     runs-on: macos-14
-
+    needs: [release-please]
+    if: ${{ always() && (needs.release-please.outputs.releases_created == 'true' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -74,12 +97,15 @@ jobs:
       - name: Determine Version
         id: version_step
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
+          if [ -n "${{ needs.release-please.outputs.version }}" ]; then
+            VER="${{ needs.release-please.outputs.version }}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
             VER="${{ github.event.inputs.version }}"
           else
             VER="${GITHUB_REF#refs/tags/v}"
           fi
           echo "version=${VER}" >> $GITHUB_OUTPUT
+          echo "Deploying version: ${VER}"
 
       - name: Deploy to TestFlight
         env:
