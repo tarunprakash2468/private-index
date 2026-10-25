@@ -99,6 +99,7 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
             return model
         }
 
+        #if os(macOS)
         // 3. Check Homebrew pkgshare and standard locations
         let standardPaths = [
             "/opt/homebrew/share/private-index/models/\(modelName).mlmodelc",
@@ -121,6 +122,16 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
            let model = try? CoreMLEmbeddingModel(modelURL: userModelURL, tokenizer: tokenizer) {
             return model
         }
+        #elseif os(iOS)
+        // 3. Check iOS app sandbox documents directory
+        if let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let modelURL = docsDir.appendingPathComponent("models/\(modelName).mlmodelc")
+            if fileManager.fileExists(atPath: modelURL.path),
+               let model = try? CoreMLEmbeddingModel(modelURL: modelURL, tokenizer: tokenizer) {
+                return model
+            }
+        }
+        #endif
 
         // 5. Fallback for unit testing and offline development
         return MockEmbeddingModel()
