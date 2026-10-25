@@ -9,32 +9,29 @@ public enum ResourceLocator {
     public static var engineBundle: Bundle? {
         let fileManager = FileManager.default
 
-        // 1. Check if SwiftPM's Bundle.module candidates exist.
-        // If any candidate directory contains the bundle, Bundle.module is safe to call without fatalError.
-        let moduleCandidates: [URL?] = [
-            Bundle.main.resourceURL,
-            Bundle(for: BertTokenizer.self).resourceURL,
-            Bundle.main.bundleURL
-        ]
-        for candidate in moduleCandidates {
-            if let candidate = candidate {
-                let bundlePath = candidate.appendingPathComponent(bundleName).path
-                if fileManager.fileExists(atPath: bundlePath) {
-                    return Bundle.module
-                }
-            }
-        }
-
-        // 2. Safe candidate search without touching Bundle.module
+        // Candidate search paths: we resolve directly using Bundle(url:) to avoid SwiftPM's
+        // auto-generated Bundle.module trap which crashes if invoked via a symlinked binary.
         var candidates: [URL?] = [
-            Bundle.main.resourceURL,
-            Bundle(for: BertTokenizer.self).resourceURL,
+            // 1. Executable-relative (resolves symlinks, e.g. /opt/homebrew/bin/pi -> /opt/homebrew/Cellar/.../bin/pi)
+            Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent(),
+            Bundle.main.executableURL?.deletingLastPathComponent(),
+
+            // 2. Class / module-relative (resolves via dyld to loaded binary/framework)
             Bundle(for: BertTokenizer.self).bundleURL,
+            Bundle(for: BertTokenizer.self).bundleURL.resolvingSymlinksInPath(),
+            Bundle(for: BertTokenizer.self).resourceURL,
             Bundle(for: BertTokenizer.self).bundleURL.deletingLastPathComponent(),
+
+            // 3. Main bundle paths (e.g. app Contents/Resources or Contents/MacOS)
+            Bundle.main.resourceURL,
             Bundle.main.bundleURL,
+            Bundle.main.bundleURL.resolvingSymlinksInPath(),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources"),
             Bundle.main.bundleURL.deletingLastPathComponent(),
             Bundle.main.bundleURL.appendingPathComponent("Resources"),
             Bundle.main.bundleURL.appendingPathComponent("bin"),
+
+            // 4. Standard Homebrew / system locations
             URL(fileURLWithPath: "/opt/homebrew/share/private-index"),
             URL(fileURLWithPath: "/usr/local/share/private-index"),
             URL(fileURLWithPath: "/opt/homebrew/bin"),
@@ -80,10 +77,13 @@ public enum ResourceLocator {
         // 4. Try standard search paths directly (e.g. loose vocab.txt in Homebrew share or bin)
         let fileName = ext.isEmpty ? name : "\(name).\(ext)"
         let searchDirs: [URL?] = [
+            Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent(),
             Bundle.main.bundleURL,
             Bundle.main.bundleURL.appendingPathComponent("Resources"),
             URL(fileURLWithPath: "/opt/homebrew/share/private-index"),
-            URL(fileURLWithPath: "/usr/local/share/private-index")
+            URL(fileURLWithPath: "/usr/local/share/private-index"),
+            URL(fileURLWithPath: "/opt/homebrew/bin"),
+            URL(fileURLWithPath: "/usr/local/bin")
         ]
         for dir in searchDirs {
             guard let dir = dir else { continue }

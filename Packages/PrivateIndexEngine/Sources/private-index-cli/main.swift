@@ -408,7 +408,7 @@ let command = args[1].lowercased()
 
 switch command {
 case "watch":
-    if args.contains("-h") || args.contains("--help") {
+    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
         print("""
         \(ANSI.bold)\(ANSI.cyan)pi watch\(ANSI.reset) — Run background watcher daemon for live folder monitoring
 
@@ -449,6 +449,10 @@ case "watch":
     }
 
     if installLaunchAgent {
+        guard FileManager.default.fileExists(atPath: resolvedPath) else {
+            print("\(ANSI.red)Error:\(ANSI.reset) Directory '\(resolvedPath)' does not exist.")
+            exit(1)
+        }
         do {
             try installWatcherLaunchAgent(path: resolvedPath)
             exit(0)
@@ -469,6 +473,21 @@ case "watch":
     dispatchMain()
 
 case "index":
+    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
+        print("""
+        \(ANSI.bold)\(ANSI.cyan)pi index\(ANSI.reset) — Index documents in a directory
+
+        \(ANSI.bold)USAGE:\(ANSI.reset)
+            pi index <path>
+
+        \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
+            <path>                   Directory to scan and index (e.g. ~/Documents)
+
+        \(ANSI.bold)OPTIONS:\(ANSI.reset)
+            -h, --help               Display this help message
+        """)
+        exit(0)
+    }
     guard args.count > 2 else {
         print("\(ANSI.red)Error:\(ANSI.reset) Please specify a path to index. e.g. `private-index-cli index ~/Documents`")
         exit(1)
@@ -486,8 +505,33 @@ case "index":
     RunLoop.main.run()
 
 case "search":
+    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
+        print("""
+        \(ANSI.bold)\(ANSI.cyan)pi search\(ANSI.reset) — Run on-device hybrid, vector, or keyword search
+
+        \(ANSI.bold)USAGE:\(ANSI.reset)
+            pi search <query> [options]
+
+        \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
+            <query>                          Search query string
+
+        \(ANSI.bold)OPTIONS:\(ANSI.reset)
+            --mode <hybrid|vector|keyword>   Search mode (default: hybrid)
+            --limit <N>                      Maximum results to return (default: 10)
+            --vector-weight <W>              Vector similarity weight for RRF fusion (default: 0.5)
+            --keyword-weight <W>             BM25 keyword weight for RRF fusion (default: 0.5)
+            -h, --help                       Display this help message
+
+        \(ANSI.bold)EXAMPLES:\(ANSI.reset)
+            pi search "33 bond st"
+            pi search "meeting notes" --mode hybrid --limit 5
+            pi search "ERR_404_NOT_FOUND" --mode keyword
+        """)
+        exit(0)
+    }
+
     guard args.count > 2 else {
-        print("\(ANSI.red)Error:\(ANSI.reset) Please specify a search query. e.g. `private-index-cli search \"privacy machine learning\"`")
+        print("\(ANSI.red)Error:\(ANSI.reset) Please specify a search query. e.g. `pi search \"privacy machine learning\"`")
         exit(1)
     }
 
@@ -564,6 +608,18 @@ case "search":
     RunLoop.main.run()
 
 case "stats":
+    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
+        print("""
+        \(ANSI.bold)\(ANSI.cyan)pi stats\(ANSI.reset) — Show database statistics and indexed document counts
+
+        \(ANSI.bold)USAGE:\(ANSI.reset)
+            pi stats
+
+        \(ANSI.bold)OPTIONS:\(ANSI.reset)
+            -h, --help    Display this help message
+        """)
+        exit(0)
+    }
     do {
         try runStats()
     } catch {
@@ -572,6 +628,18 @@ case "stats":
     }
 
 case "reset":
+    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
+        print("""
+        \(ANSI.bold)\(ANSI.cyan)pi reset\(ANSI.reset) — Clear database and purge all vector embeddings
+
+        \(ANSI.bold)USAGE:\(ANSI.reset)
+            pi reset
+
+        \(ANSI.bold)OPTIONS:\(ANSI.reset)
+            -h, --help    Display this help message
+        """)
+        exit(0)
+    }
     do {
         try runReset()
     } catch {
