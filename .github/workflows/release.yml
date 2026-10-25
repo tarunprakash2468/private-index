@@ -1,0 +1,90 @@
+name: Release & Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version override (e.g. 1.0.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos:
+    name: Build & Publish macOS Release (.dmg & CLI)
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version_step
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+          echo "tag=v${VER}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VER}"
+
+      - name: Select Xcode
+        run: |
+          echo "Active Xcode: $(xcode-select -p)"
+          swift --version
+
+      - name: Package macOS Assets (.dmg and CLI tarball)
+        run: |
+          ./scripts/package_macos.sh "${{ steps.version_step.outputs.version }}"
+
+      - name: Compute Checksums
+        run: |
+          cd dist
+          shasum -a 256 *.dmg *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version_step.outputs.tag }}
+          name: "Private Index ${{ steps.version_step.outputs.version }}"
+          files: |
+            dist/*.dmg
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  deploy-ios:
+    name: Deploy iOS to Apple TestFlight
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version_step
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to TestFlight
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          ./scripts/deploy_ios_testflight.sh "${{ steps.version_step.outputs.version }}"

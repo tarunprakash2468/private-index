@@ -292,3 +292,35 @@ We welcome contributions! Please follow these guidelines:
 5. **Open a Pull Request**:
    - Ensure CI checks pass on GitHub Actions.
    - Describe what changed and include test verification results.
+
+---
+
+## Release & Deployment
+
+Private Index maintains two separated release channels:
+
+### 1. macOS GitHub Releases
+Creating a semantic tag triggers `.github/workflows/release.yml` which packages and publishes:
+- `PrivateIndexMac-<version>.dmg`: The end-user application installer with `/Applications` drag-and-drop link.
+- `private-index-cli-<version>-darwin-arm64.tar.gz`: Standalone CLI binary for terminal power-users and Homebrew Tap distribution.
+- `SHA256SUMS.txt`: Cryptographic integrity checksums.
+
+```bash
+# Tag and push a release
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+To test macOS packaging locally without pushing a tag:
+```bash
+./scripts/package_macos.sh 1.0.0
+```
+
+### 2. iOS Apple TestFlight
+iOS builds are strictly and exclusively deployed to **Apple TestFlight** (no loose `.ipa` or simulator bundles are attached to GitHub Releases).
+
+To enable automated TestFlight deployment, configure these GitHub Secrets in your repository:
+- `APP_STORE_CONNECT_KEY_ID`: 10-character API key ID (e.g. `2X9R4HXF34`).
+- `APP_STORE_CONNECT_ISSUER_ID`: Issuer UUID from App Store Connect.
+- `APP_STORE_CONNECT_PRIVATE_KEY`: Full content of `AuthKey_<KEY_ID>.p8`.
+
