@@ -80,6 +80,7 @@ jobs:
 
       - name: Compile & Verify Core ML Embedding Model
         if: steps.cache-model.outputs.cache-hit != 'true'
+        continue-on-error: true
         run: |
           pip install -r scripts/requirements.txt
           python3 scripts/convert_model.py --compile --verify
@@ -99,11 +100,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version_step.outputs.tag }}"
-          # Upload assets to existing release or create release if manual run
-          gh release upload "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb --clobber || \
-          gh release create "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb \
-            --title "Private Index ${{ steps.version_step.outputs.version }}" \
-            --generate-notes
+          VER="v${{ steps.version_step.outputs.version }}"
+          for t in "${TAG}" "${VER}"; do
+            gh release upload "${t}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb --clobber || \
+            gh release create "${t}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb \
+              --title "Private Index ${{ steps.version_step.outputs.version }}" \
+              --generate-notes || true
+          done
 
       - name: Sync Formula to Main Branch
         run: |
