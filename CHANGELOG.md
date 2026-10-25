@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.0...private-index-v0.2.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **brew:** adjust test regex for ANSI escape sequences ([5d040e5](https://github.com/tarunprakash2468/private-index/commit/5d040e51690477294a691bea8a5d73ee4082c53c))
+* bundle engine resources and prevent fatal error ([27e5829](https://github.com/tarunprakash2468/private-index/commit/27e5829bee2b10f916f89af7be1209312d9242e2))
+* **engine:** ensure resource bundle locator resolves in CI tests ([e894aee](https://github.com/tarunprakash2468/private-index/commit/e894aeeb98028c2a5f91840774c68eff7b9d09ad))
+* **formula:** update sha256 for 0.2.0 release ([8b4b800](https://github.com/tarunprakash2468/private-index/commit/8b4b800a96e5282018b4b77a6723b284b7f1140b))
+
 ## [0.2.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.1.0...private-index-v0.2.0) (2026-10-25)
 
 
