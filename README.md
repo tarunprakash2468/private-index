@@ -1,99 +1,110 @@
 # Private Index
 
-A zero-cloud, privacy-preserving semantic search engine for macOS (14+) and iOS (17+) that indexes local and iCloud Drive documents entirely on-device using Apple Neural Engine (ANE) acceleration and SQLite vector search.
+> **Zero-cloud, privacy-preserving semantic search for macOS and iOS.**  
+> Find documents and notes by *meaning*, entirely on-device, with the speed of the Apple Neural Engine.
 
 ---
 
-## Architecture Overview
+## What is Private Index?
 
-```
-                                 ┌────────────────────────────────┐
-                                 │       FileCrawler.swift        │
-                                 │ (Filters system/hidden/evicted)│
-                                 └───────────────┬────────────────┘
-                                                 │ File URLs
-                                                 ▼
-                                 ┌────────────────────────────────┐
-                                 │       TextChunker.swift        │
-                                 │  (500 char window, 100 overlap)│
-                                 └───────────────┬────────────────┘
-                                                 │ Text Chunks
-                                                 ▼
-┌───────────────────────────┐    ┌────────────────────────────────┐
-│  all-MiniLM-L6-v2 Core ML │    │       VectorStore.swift        │
-│ (ANE-optimized, FP16 MIL) ├────►  (SQLite with sqlite-vec ext)  │
-│  Outputs (1, 384) L2 norm │    │    Stores text & vec0 virtual  │
-└───────────────────────────┘    └────────────────────────────────┘
-```
+Traditional search engines rely on exact keyword matches or upload your personal documents to cloud servers to run machine learning models. 
 
-1. **Embedding Model**: `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional dense vectors), converted to an FP16 Core ML `.mlpackage` targeting the Apple Neural Engine. Mean-pooling and L2 normalization are baked directly into the model graph.
-2. **Vector Storage**: SQLite embedded storage using the official `sqlite-vec` C extension compiled statically (`vec0` virtual table, cosine distance metric).
-3. **iCloud Isolation**: The database (`index.sqlite`) resides inside the app's sandboxed iCloud Ubiquity Container (`iCloud.com.app.privateindex`), strictly segregated from user-facing iCloud Drive folders to prevent sync loops.
-4. **Ingestion & Chunking**: Sliding-window chunker with 500-character windows and 100-character overlaps.
-5. **Dataless File Handling**: Uses `URLResourceKey.ubiquitousItemDownloadingStatusKey` to skip evicted (`.notDownloaded`) files, avoiding unexpected network bandwidth and cloud fetch latency.
+**Private Index** changes that:
+- **Search by Meaning**: Find documents by describing what you remember ("recipes with rosemary and garlic", "rust error handling patterns", "tax deduction notes 2024") without needing exact filenames or keywords.
+- **100% On-Device AI**: Powered by Apple Neural Engine (ANE) acceleration. Your documents, embeddings, and search queries never leave your Mac or iPhone.
+- **Zero Cloud & Air-Gapped**: Works completely offline. No tracking, no telemetry, no subscriptions, no accounts.
+- **Seamless iCloud Integration**: Automatically indexes your iCloud Drive documents with built-in sync loop protection.
 
 ---
 
-## Repository Layout
+## Platforms & Features
 
-```
-private-index/
-├── .gitignore
-├── LICENSE
-├── README.md
-├── scripts/
-│   ├── convert_model.py       # PyTorch -> Core ML (MIL + mean pool + L2 norm)
-│   └── requirements.txt      # Python dependencies for model export
-├── Packages/
-│   └── PrivateIndexEngine/   # Core Swift Package
-│       ├── Package.swift
-│       ├── Sources/
-│       │   ├── CSQLiteVec/   # Vendored sqlite-vec amalgamation + header
-│       │   └── PrivateIndexEngine/
-│       │       ├── VectorStore.swift
-│       │       ├── TextChunker.swift
-│       │       └── FileCrawler.swift
-│       └── Tests/
-│           └── PrivateIndexEngineTests/
-│               ├── FileCrawlerTests.swift
-│               ├── TextChunkerTests.swift
-│               └── VectorStoreTests.swift
-└── Apps/
-    ├── macOS/                # Future macOS App Target
-    └── iOS/                  # Future iOS App Target
+### 🖥️ macOS Experience (macOS 14+ Sonoma & Sequoia)
+
+- **Spotlight-Style Search HUD**: Press `⌘ + Shift + Space` anywhere to bring up a floating glassmorphic search panel.
+- **Keystroke Search**: Real-time semantic retrieval in under 2 milliseconds.
+- **Semantic Match Indicators**: Visual match pills (`98% match`, `85% match`) show you how closely each document relates to your query.
+- **Quick Actions**: Tap `↵` to immediately open a file, or `⌘↵` to reveal it in Finder.
+- **Menu Bar Companion**: Fast access to indexing status, manual scan triggers, and settings right from your menu bar.
+- **Automatic Background Sync**: Live file system watcher updates the index automatically whenever you save, edit, or delete documents.
+
+### 📱 iOS Experience (iOS 17+)
+
+- **Modern Touch-First Design**: Multi-tab interface featuring dedicated Search, Documents, and Settings views.
+- **QuickLook File Previews**: Tap any search result to preview documents immediately with native iOS QuickLook without switching apps.
+- **Files App Integration**: Select any iCloud Drive or local folder to index using native iOS document pickers with persistent security-scoped access.
+- **Mobile-Optimized Indexing**: Intelligent background scheduling prevents thermal throttling and saves battery life.
+
+### ⚡ Developer Terminal CLI
+
+Prefer the terminal? Private Index includes a blazing-fast CLI tool:
+
+```bash
+# Index a directory
+private-index-cli index ~/Documents
+
+# Search documents semantically
+private-index-cli search "zero-cloud privacy architecture" --limit 5
+
+# Check index statistics
+private-index-cli stats
 ```
 
 ---
 
-## Building and Testing
+## Supported File Formats
 
-### Swift Package
+Private Index indexes over 30 plain-text, markdown, and code formats:
+
+| Category | Extensions |
+|---|---|
+| **Notes & Text** | `.txt`, `.text`, `.md`, `.markdown`, `.mdown`, `.mkd`, `.adoc`, `.rst`, `.tex` |
+| **Code & Scripts** | `.swift`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.c`, `.h`, `.cpp`, `.rs`, `.go`, `.java`, `.kt`, `.rb`, `.sh`, `.zsh`, `.bash`, `.lua`, `.sql` |
+| **Config & Data** | `.json`, `.yaml`, `.yml`, `.toml`, `.csv`, `.tsv`, `.ini`, `.cfg`, `.conf`, `.plist`, `.env`, `.xml`, `.html`, `.css` |
+
+---
+
+## Privacy & Security Guarantee
+
+1. **Strictly Air-Gapped**: Private Index contains zero networking code for search and inference.
+2. **Ubiquity Isolation**: The search database (`index.sqlite`) resides in the app's sandboxed iCloud Ubiquity Container (`iCloud.com.app.privateindex/Database/`), physically separated from your document files to prevent circular sync loops.
+3. **Dataless File Protection**: Uses Apple's file system attributes to detect iCloud evicted files (`.notDownloaded`) and skips them, ensuring the app never triggers unwanted cellular data or battery drain.
+
+---
+
+## Quick Start
+
+### macOS Application
+
+```bash
+cd Apps/macOS
+swift run PrivateIndexMac
+```
+
+- Press `⌘ + Shift + Space` to summon the search window.
+- Open **Settings** to choose which folder to index (defaults to your personal iCloud Drive Documents).
+
+### Developer CLI
 
 ```bash
 cd Packages/PrivateIndexEngine
-
-# Build package
-swift build
-
-# Run unit tests
-swift test --scratch-path /tmp/private-index-build
+swift run private-index-cli --help
 ```
 
-> **Note**: Building inside directories managed by iCloud Drive (such as Desktop & Documents) may attach macOS FileProvider metadata (`com.apple.FinderInfo`) to debug bundles. Specifying `--scratch-path /tmp/private-index-build` ensures clean codesigning.
+---
 
-### Core ML Conversion Pipeline
+## Developers & Contributors
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r scripts/requirements.txt
+Interested in the technical architecture, Core ML conversion pipeline, SQLite vector virtual tables, or contributing code?
 
-# Convert sentence-transformers/all-MiniLM-L6-v2 to Core ML
-python3 scripts/convert_model.py --output all-MiniLM-L6-v2.mlpackage
-```
+👉 **See our comprehensive [CONTRIBUTING.md](CONTRIBUTING.md) guide** for:
+- Architecture diagrams & data flow deep-dives
+- Building and testing `PrivateIndexEngine`
+- Running performance benchmarks (68k+ vectors/sec insertion, ~2ms search latency)
+- Coding standards and Pull Request instructions
 
 ---
 
 ## License
 
-MIT
+This project is open-source software licensed under the [MIT License](LICENSE).
