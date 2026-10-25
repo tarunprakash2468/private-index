@@ -38,4 +38,4 @@ jobs:
       - name: Build iOS Application (Simulator)
         run: |
           cd Apps/iOS
-          swift build --triple arm64-apple-ios17.0-simulator
+          swift build --triple arm64-apple-ios17.0-simulator --sdk $(xcrun --sdk iphonesimulator --show-sdk-path)
