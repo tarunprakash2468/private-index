@@ -17,7 +17,7 @@ _pi_completions() {
             ;;
         search)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "--limit" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--limit --mode --vector-weight --keyword-weight" -- "$cur") )
             fi
             return 0
             ;;

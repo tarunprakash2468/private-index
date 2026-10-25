@@ -34,19 +34,33 @@ public struct IndexReport: Sendable, Equatable {
     }
 }
 
+// MARK: - SearchMode
+
+/// The search retrieval and ranking mode.
+public enum SearchMode: String, Sendable, CaseIterable {
+    /// Combined Reciprocal Rank Fusion (RRF) over vector similarity and BM25 keyword search.
+    case hybrid
+    /// Pure semantic cosine similarity across Core ML dense vector embeddings.
+    case vector
+    /// Pure full-text keyword matching using SQLite FTS5 BM25 ranking.
+    case keyword
+}
+
 // MARK: - SearchResultItem
 
-/// A user-facing search result combining semantic vector ranking and file metadata.
+/// A user-facing search result combining semantic vector ranking, keyword matching, and file metadata.
 public struct SearchResultItem: Identifiable, Sendable, Equatable {
     public let id: Int64
     public let fileId: Int64
     public let filePath: String
     /// Cosine distance (0.0 = identical, 1.0 = orthogonal).
     public let distance: Float
-    /// Normalized cosine similarity score (1.0 = identical, 0.0 = orthogonal/opposite).
+    /// Ranking score: combined RRF fusion score in hybrid mode, normalized cosine similarity in vector mode, or BM25 relevance in keyword mode.
     public let score: Float
     /// Text snippet indexed from this chunk.
     public let content: String
+    /// The match source: "hybrid", "vector", or "keyword".
+    public let matchType: String
 
     public init(
         id: Int64,
@@ -54,7 +68,8 @@ public struct SearchResultItem: Identifiable, Sendable, Equatable {
         filePath: String,
         distance: Float,
         score: Float,
-        content: String
+        content: String,
+        matchType: String = "hybrid"
     ) {
         self.id = id
         self.fileId = fileId
@@ -62,6 +77,7 @@ public struct SearchResultItem: Identifiable, Sendable, Equatable {
         self.distance = distance
         self.score = score
         self.content = content
+        self.matchType = matchType
     }
 }
 
@@ -214,13 +230,47 @@ public actor IndexCoordinator {
 
     // MARK: - Search
 
-    /// Performs natural language semantic search across all indexed chunks.
+    /// Searches indexed documents using hybrid, vector, or keyword retrieval.
+    ///
+    /// Modes:
+    /// - `.hybrid` (default): Executes dense Core ML vector search and SQLite FTS5 BM25 keyword search,
+    ///   combining them with Reciprocal Rank Fusion:
+    ///   Score(d) = (w_vector / (60 + rank_vector(d))) + (w_keyword / (60 + rank_keyword(d)))
+    /// - `.vector`: Pure semantic cosine similarity ranking.
+    /// - `.keyword`: Pure SQLite FTS5 BM25 full-text ranking.
     ///
     /// - Parameters:
     ///   - query: Freeform query text.
     ///   - limit: Maximum number of results to return (default 10).
-    /// - Returns: Ranked search results with file paths, content snippets, and similarity scores.
-    public func search(query: String, limit: Int = 10) async throws -> [SearchResultItem] {
+    ///   - mode: Search mode: `.hybrid` (default), `.vector`, or `.keyword`.
+    ///   - vectorWeight: Weight for vector similarity in RRF (default 0.5).
+    ///   - keywordWeight: Weight for BM25 keyword matching in RRF (default 0.5).
+    /// - Returns: Ranked search results with file paths, content snippets, scores, and match types.
+    public func search(
+        query: String,
+        limit: Int = 10,
+        mode: SearchMode = .hybrid,
+        vectorWeight: Float = 0.5,
+        keywordWeight: Float = 0.5
+    ) async throws -> [SearchResultItem] {
+        switch mode {
+        case .vector:
+            return try await searchVector(query: query, limit: limit)
+
+        case .keyword:
+            return try searchKeyword(query: query, limit: limit)
+
+        case .hybrid:
+            return try await searchHybrid(
+                query: query,
+                limit: limit,
+                vectorWeight: vectorWeight,
+                keywordWeight: keywordWeight
+            )
+        }
+    }
+
+    private func searchVector(query: String, limit: Int) async throws -> [SearchResultItem] {
         let queryVector = try await embeddingModel.generateEmbedding(for: query)
         let rawResults = try vectorStore.search(queryVector: queryVector, limit: limit)
 
@@ -232,7 +282,144 @@ public actor IndexCoordinator {
                 filePath: r.filePath,
                 distance: r.distance,
                 score: score,
-                content: r.content
+                content: r.content,
+                matchType: "vector"
+            )
+        }
+    }
+
+    private func searchKeyword(query: String, limit: Int) throws -> [SearchResultItem] {
+        let rawResults = try vectorStore.searchBM25(query: query, limit: limit)
+        // Normalize BM25 scores relative to the top hit (or 1.0 if empty/single)
+        let bestScore = rawResults.first.map { abs($0.score) } ?? 1.0
+
+        return rawResults.map { r in
+            let normalizedScore = bestScore > 0 ? min(1.0, abs(r.score) / bestScore) : 1.0
+            return SearchResultItem(
+                id: r.chunkId,
+                fileId: r.fileId,
+                filePath: r.filePath,
+                distance: 0.0,
+                score: normalizedScore,
+                content: r.content,
+                matchType: "keyword"
+            )
+        }
+    }
+
+    private func searchHybrid(
+        query: String,
+        limit: Int,
+        vectorWeight: Float,
+        keywordWeight: Float
+    ) async throws -> [SearchResultItem] {
+        let candidateLimit = max(limit * 3, 50)
+
+        // 1. Dense Vector Search
+        let queryVector = try await embeddingModel.generateEmbedding(for: query)
+        let vectorResults = try vectorStore.search(queryVector: queryVector, limit: candidateLimit)
+
+        // 2. BM25 Full-Text Search
+        let keywordResults = try vectorStore.searchBM25(query: query, limit: candidateLimit)
+
+        // If both returned nothing, return empty
+        if vectorResults.isEmpty && keywordResults.isEmpty {
+            return []
+        }
+
+        // 3. Reciprocal Rank Fusion (RRF)
+        struct Candidate {
+            let chunkId: Int64
+            let fileId: Int64
+            let filePath: String
+            var distance: Float
+            let content: String
+            var vectorRank: Int?
+            var keywordRank: Int?
+        }
+
+        var candidates: [Int64: Candidate] = [:]
+
+        for (idx, r) in vectorResults.enumerated() {
+            let rank = idx + 1 // 1-based rank
+            candidates[r.chunkId] = Candidate(
+                chunkId: r.chunkId,
+                fileId: r.fileId,
+                filePath: r.filePath,
+                distance: r.distance,
+                content: r.content,
+                vectorRank: rank,
+                keywordRank: nil
+            )
+        }
+
+        for (idx, r) in keywordResults.enumerated() {
+            let rank = idx + 1 // 1-based rank
+            if var existing = candidates[r.chunkId] {
+                existing.keywordRank = rank
+                candidates[r.chunkId] = existing
+            } else {
+                candidates[r.chunkId] = Candidate(
+                    chunkId: r.chunkId,
+                    fileId: r.fileId,
+                    filePath: r.filePath,
+                    distance: 1.0,
+                    content: r.content,
+                    vectorRank: nil,
+                    keywordRank: rank
+                )
+            }
+        }
+
+        struct ScoredCandidate {
+            let candidate: Candidate
+            let fusionScore: Float
+            let matchType: String
+        }
+
+        var scored: [ScoredCandidate] = []
+        for candidate in candidates.values {
+            var score: Float = 0.0
+            if let vRank = candidate.vectorRank {
+                score += vectorWeight / Float(60 + vRank)
+            }
+            if let kRank = candidate.keywordRank {
+                score += keywordWeight / Float(60 + kRank)
+            }
+
+            let matchType: String
+            if candidate.vectorRank != nil && candidate.keywordRank != nil {
+                matchType = "hybrid"
+            } else if candidate.vectorRank != nil {
+                matchType = "vector"
+            } else {
+                matchType = "keyword"
+            }
+
+            scored.append(ScoredCandidate(
+                candidate: candidate,
+                fusionScore: score,
+                matchType: matchType
+            ))
+        }
+
+        scored.sort { a, b in
+            if a.fusionScore != b.fusionScore {
+                return a.fusionScore > b.fusionScore
+            }
+            return a.candidate.distance < b.candidate.distance
+        }
+
+        let top = scored.prefix(limit)
+        return top.map { s in
+            SearchResultItem(
+                id: s.candidate.chunkId,
+                fileId: s.candidate.fileId,
+                filePath: s.candidate.filePath,
+                distance: s.candidate.distance,
+                score: s.fusionScore,
+                content: s.candidate.content,
+                matchType: s.matchType
             )
         }
     }

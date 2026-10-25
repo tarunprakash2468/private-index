@@ -62,13 +62,25 @@ final class IndexCoordinatorTests: XCTestCase {
         // Exact query matching chunk content will produce distance near 0 with MockEmbeddingModel
         let results = try await coordinator.search(
             query: "Swift is a modern, fast, and safe programming language for Apple platforms.",
-            limit: 5
+            limit: 5,
+            mode: .vector
         )
 
         XCTAssertFalse(results.isEmpty)
         XCTAssertEqual(results[0].filePath, file1.standardizedFileURL.path)
         XCTAssertLessThan(results[0].distance, 0.01)
         XCTAssertGreaterThan(results[0].score, 0.99)
+        XCTAssertEqual(results[0].matchType, "vector")
+
+        // Hybrid search with default mode should also rank the exact file top with hybrid matchType
+        let hybridResults = try await coordinator.search(
+            query: "Swift is a modern, fast, and safe programming language for Apple platforms.",
+            limit: 5
+        )
+        XCTAssertFalse(hybridResults.isEmpty)
+        XCTAssertEqual(hybridResults[0].filePath, file1.standardizedFileURL.path)
+        XCTAssertEqual(hybridResults[0].matchType, "hybrid")
+        XCTAssertGreaterThan(hybridResults[0].score, 0.0)
     }
 
     func testIncrementalIndexingSkipsUnchangedFiles() async throws {

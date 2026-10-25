@@ -15,4 +15,7 @@ for cmd in pi private-index private-index-cli
     # Subcommand arguments
     complete -c $cmd -n "__fish_seen_subcommand_from index" -a "(__fish_complete_directories)" -d "Directory path"
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l limit -d "Maximum search results"
+    complete -c $cmd -n "__fish_seen_subcommand_from search" -l mode -d "Search mode (hybrid, vector, keyword)" -r -a "hybrid vector keyword"
+    complete -c $cmd -n "__fish_seen_subcommand_from search" -l vector-weight -d "Vector similarity weight for hybrid search"
+    complete -c $cmd -n "__fish_seen_subcommand_from search" -l keyword-weight -d "BM25 keyword weight for hybrid search"
 end

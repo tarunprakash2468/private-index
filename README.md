@@ -14,6 +14,7 @@
 Traditional search engines rely on exact keyword matches or upload your personal documents to cloud servers to run machine learning models. 
 
 **Private Index** changes that:
+- **Hybrid Search**: Combines semantic embeddings with SQLite FTS5 BM25 keyword search using Reciprocal Rank Fusion (RRF) to retrieve both conceptual matches and exact symbols (UUIDs, error codes, function names).
 - **Search by Meaning**: Find documents by describing what you remember ("recipes with rosemary and garlic", "rust error handling patterns", "tax deduction notes 2024") without needing exact filenames or keywords.
 - **100% On-Device AI**: Powered by Apple Neural Engine (ANE) acceleration. Your documents, embeddings, and search queries never leave your Mac or iPhone.
 - **Zero Cloud & Air-Gapped**: Works completely offline. No tracking, no telemetry, no subscriptions, no accounts.
@@ -55,8 +56,13 @@ Run commands with the sleek **`pi`** shorthand (or `private-index`):
 # Index a directory
 pi index ~/Documents
 
-# Search documents semantically
+# Search documents using Hybrid Search (default: Core ML vector + FTS5 BM25 with RRF)
 pi search "zero-cloud privacy architecture" --limit 5
+
+# Search with specific mode: hybrid, vector, or keyword
+pi search "ERR_AUTH_TOKEN_401" --mode keyword
+pi search "neural network acceleration" --mode vector
+pi search "on-device inference" --mode hybrid --vector-weight 0.7 --keyword-weight 0.3
 
 # Check index statistics
 pi stats
