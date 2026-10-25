@@ -65,6 +65,17 @@ public struct FileCrawler: Sendable {
 
     public init() {}
 
+    // MARK: - Dataless / Evicted iCloud Check
+
+    /// Checks whether the file at `url` is evicted/dataless in iCloud without triggering download.
+    public static func isDatalessICloudFile(at url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
+              let status = values.ubiquitousItemDownloadingStatus else {
+            return false
+        }
+        return status == .notDownloaded
+    }
+
     // MARK: - Crawling
 
     /// Scans `rootURL` recursively, categorizing files.

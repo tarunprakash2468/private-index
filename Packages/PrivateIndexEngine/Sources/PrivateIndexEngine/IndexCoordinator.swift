@@ -16,6 +16,8 @@ public struct IndexReport: Sendable, Equatable {
     public let chunksIndexed: Int
     /// Total execution duration in seconds.
     public let duration: TimeInterval
+    /// Number of evicted / dataless iCloud files skipped to prevent unwanted downloads.
+    public let filesSkippedEvicted: Int
 
     public init(
         filesScanned: Int,
@@ -23,7 +25,8 @@ public struct IndexReport: Sendable, Equatable {
         filesSkipped: Int,
         filesDeleted: Int,
         chunksIndexed: Int,
-        duration: TimeInterval
+        duration: TimeInterval,
+        filesSkippedEvicted: Int = 0
     ) {
         self.filesScanned = filesScanned
         self.filesIndexed = filesIndexed
@@ -31,6 +34,7 @@ public struct IndexReport: Sendable, Equatable {
         self.filesDeleted = filesDeleted
         self.chunksIndexed = chunksIndexed
         self.duration = duration
+        self.filesSkippedEvicted = filesSkippedEvicted
     }
 }
 
@@ -208,7 +212,8 @@ public actor IndexCoordinator {
             filesSkipped: skippedCount,
             filesDeleted: deletedCount,
             chunksIndexed: totalChunksIndexed,
-            duration: duration
+            duration: duration,
+            filesSkippedEvicted: crawlResult.skippedEvicted.count
         )
     }
 
