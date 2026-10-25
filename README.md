@@ -35,19 +35,27 @@ Traditional search engines rely on exact keyword matches or upload your personal
 - **Files App Integration**: Select any iCloud Drive or local folder to index using native iOS document pickers with persistent security-scoped access.
 - **Mobile-Optimized Indexing**: Intelligent background scheduling prevents thermal throttling and saves battery life.
 
-### ⚡ Developer Terminal CLI
+### ⚡ Developer Terminal CLI (`pi`)
 
-Prefer the terminal? Private Index includes a blazing-fast CLI tool:
+Prefer the terminal? Install Private Index CLI via Homebrew:
+
+```bash
+# Tap repository and install
+brew tap tarunprakash2468/private-index https://github.com/tarunprakash2468/private-index
+brew install private-index
+```
+
+Run commands with the sleek **`pi`** shorthand (or `private-index`):
 
 ```bash
 # Index a directory
-private-index-cli index ~/Documents
+pi index ~/Documents
 
 # Search documents semantically
-private-index-cli search "zero-cloud privacy architecture" --limit 5
+pi search "zero-cloud privacy architecture" --limit 5
 
 # Check index statistics
-private-index-cli stats
+pi stats
 ```
 
 ---
@@ -85,11 +93,16 @@ swift run PrivateIndexMac
 - Press `⌘ + Shift + Space` to summon the search window.
 - Open **Settings** to choose which folder to index (defaults to your personal iCloud Drive Documents).
 
-### Developer CLI
+### Developer CLI (`pi`)
 
 ```bash
+# Install via Homebrew
+brew tap tarunprakash2468/private-index https://github.com/tarunprakash2468/private-index
+brew install private-index
+
+# Or run from source
 cd Packages/PrivateIndexEngine
-swift run private-index-cli --help
+swift run private-index-cli help
 ```
 
 ---

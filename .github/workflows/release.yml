@@ -80,10 +80,21 @@ jobs:
         run: |
           TAG="${{ steps.version_step.outputs.tag }}"
           # Upload assets to existing release or create release if manual run
-          gh release upload "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt --clobber || \
-          gh release create "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt \
+          gh release upload "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb --clobber || \
+          gh release create "${TAG}" dist/*.dmg dist/*.tar.gz dist/SHA256SUMS.txt dist/*.rb \
             --title "Private Index ${{ steps.version_step.outputs.version }}" \
             --generate-notes
+
+      - name: Sync Formula to Main Branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/private-index.rb
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(formula): bump Homebrew formula to ${{ steps.version_step.outputs.version }}"
+            git pull --rebase origin main || true
+            git push origin main || true
+          fi
 
   deploy-ios:
     name: Deploy iOS to Apple TestFlight

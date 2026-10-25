@@ -57,10 +57,11 @@ func setupEngine() throws -> (VectorStore, IndexCoordinator) {
 
 func printHelp() {
     print("""
-    \(ANSI.bold)\(ANSI.cyan)Private Index CLI\(ANSI.reset) — On-Device Semantic Search Engine
+    \(ANSI.bold)\(ANSI.cyan)pi\(ANSI.reset) — Private Index: On-Device Semantic Search Engine
 
     \(ANSI.bold)USAGE:\(ANSI.reset)
-        private-index-cli <command> [arguments]
+        pi <command> [arguments]
+        private-index <command> [arguments]
 
     \(ANSI.bold)COMMANDS:\(ANSI.reset)
         \(ANSI.green)index\(ANSI.reset) <path>            Index documents in the specified directory
@@ -70,9 +71,9 @@ func printHelp() {
         \(ANSI.green)help\(ANSI.reset)                    Display this help message
 
     \(ANSI.bold)EXAMPLES:\(ANSI.reset)
-        private-index-cli index ~/Documents
-        private-index-cli search "zero-cloud privacy architecture" --limit 5
-        private-index-cli stats
+        pi index ~/Documents
+        pi search "zero-cloud privacy architecture" --limit 5
+        pi stats
     """)
 }
 

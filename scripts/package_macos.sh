@@ -47,8 +47,10 @@ rm -rf "${CLI_STAGE}"
 mkdir -p "${CLI_STAGE}"
 cp "${CLI_BIN}" "${CLI_STAGE}/private-index-cli"
 chmod +x "${CLI_STAGE}/private-index-cli"
+ln -sf "private-index-cli" "${CLI_STAGE}/pi"
+ln -sf "private-index-cli" "${CLI_STAGE}/private-index"
 cp "${REPO_ROOT}/LICENSE" "${CLI_STAGE}/LICENSE"
-tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" private-index-cli LICENSE
+tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE
 rm -rf "${CLI_STAGE}"
 
 # -----------------------------------------------------------------------------
@@ -103,6 +105,10 @@ hdiutil create \
     "${DMG_OUTPUT}"
 
 rm -rf "${DMG_STAGE}" "${APP_DIR}"
+
+echo ""
+echo "==> Updating Homebrew Tap Formula..."
+"${SCRIPT_DIR}/update_homebrew_formula.sh" "${VERSION}"
 
 echo ""
 echo "==> macOS release artifacts created successfully:"
