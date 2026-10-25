@@ -120,6 +120,10 @@ if [[ -f "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" ]]; then
     cp "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
+# Code sign the application bundle so resources and binary are properly sealed
+echo "==> Code signing Private Index.app..."
+codesign --force --deep --sign - "${APP_DIR}"
+
 # Build .dmg disk image with /Applications symlink
 DMG_STAGE="/tmp/dmg-stage"
 rm -rf "${DMG_STAGE}"
