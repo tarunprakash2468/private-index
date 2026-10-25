@@ -185,4 +185,62 @@ final class VectorStoreTests: XCTestCase {
 
         store.close()
     }
+
+    // MARK: - Incremental Operations
+
+    func testGetFileAndGetAllIndexedFiles() throws {
+        let store = try VectorStore(at: nil)
+        try store.createSchema()
+
+        let now = Date(timeIntervalSince1970: 1700000000)
+        let fileId = try store.insertFile(path: "/path/to/alpha.txt", mtime: now, size: 4096)
+
+        // getFile by path
+        let fetched = try store.getFile(byPath: "/path/to/alpha.txt")
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(fetched?.id, fileId)
+        XCTAssertEqual(fetched?.path, "/path/to/alpha.txt")
+        XCTAssertEqual(fetched?.size, 4096)
+        XCTAssertEqual(fetched?.mtime.timeIntervalSince1970 ?? 0, 1700000000, accuracy: 0.001)
+
+        // Non-existent file
+        let missing = try store.getFile(byPath: "/path/to/missing.txt")
+        XCTAssertNil(missing)
+
+        // getAllIndexedFiles
+        _ = try store.insertFile(path: "/path/to/beta.txt", mtime: now, size: 2048)
+        let allFiles = try store.getAllIndexedFiles()
+        XCTAssertEqual(allFiles.count, 2)
+        XCTAssertTrue(allFiles.keys.contains("/path/to/alpha.txt"))
+        XCTAssertTrue(allFiles.keys.contains("/path/to/beta.txt"))
+
+        store.close()
+    }
+
+    func testDeleteFileCascadesToChunksAndVectors() throws {
+        let store = try VectorStore(at: nil)
+        try store.createSchema()
+
+        let fileId = try store.insertFile(path: "/path/to/doc.txt", mtime: Date(), size: 100)
+        let v1 = makeUnitVector(index: 0)
+        let chunkId = try store.insertChunk(fileId: fileId, chunkIndex: 0, content: "Delete me", embedding: v1)
+
+        // Verify searchable
+        var results = try store.search(queryVector: v1, limit: 5)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].chunkId, chunkId)
+        XCTAssertEqual(results[0].filePath, "/path/to/doc.txt")
+
+        // Delete file
+        try store.deleteFile(id: fileId)
+
+        // Verify file gone
+        XCTAssertNil(try store.getFile(byPath: "/path/to/doc.txt"))
+
+        // Verify chunks and vectors also deleted
+        results = try store.search(queryVector: v1, limit: 5)
+        XCTAssertEqual(results.count, 0, "Deleted file's vectors should no longer appear in search")
+
+        store.close()
+    }
 }

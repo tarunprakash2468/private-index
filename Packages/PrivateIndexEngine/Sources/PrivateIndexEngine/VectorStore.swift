@@ -16,11 +16,36 @@ public final class VectorStore {
 
     // MARK: - Types
 
-    /// A search result containing the chunk ID, cosine distance, and text content.
-    public struct SearchResult {
+    /// A record of an indexed file stored in SQLite.
+    public struct FileRecord: Sendable, Equatable {
+        public let id: Int64
+        public let path: String
+        public let mtime: Date
+        public let size: Int64
+
+        public init(id: Int64, path: String, mtime: Date, size: Int64) {
+            self.id = id
+            self.path = path
+            self.mtime = mtime
+            self.size = size
+        }
+    }
+
+    /// A search result containing the chunk ID, source file information, cosine distance, and text content.
+    public struct SearchResult: Sendable, Equatable {
         public let chunkId: Int64
+        public let fileId: Int64
+        public let filePath: String
         public let distance: Float
         public let content: String
+
+        public init(chunkId: Int64, fileId: Int64, filePath: String, distance: Float, content: String) {
+            self.chunkId = chunkId
+            self.fileId = fileId
+            self.filePath = filePath
+            self.distance = distance
+            self.content = content
+        }
     }
 
     /// Errors specific to VectorStore operations.
@@ -86,6 +111,7 @@ public final class VectorStore {
 
         // Enable WAL mode for better concurrent read performance
         try execute("PRAGMA journal_mode=WAL;")
+        try execute("PRAGMA foreign_keys=ON;")
     }
 
     deinit {
@@ -149,6 +175,95 @@ public final class VectorStore {
         }
 
         return sqlite3_last_insert_rowid(db)
+    }
+
+    /// Fetches an indexed file by its path.
+    public func getFile(byPath path: String) throws -> FileRecord? {
+        let sql = "SELECT id, path, mtime, size FROM indexed_files WHERE path = ? LIMIT 1;"
+        var stmt: OpaquePointer?
+        try prepareStatement(sql, into: &stmt)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (path as NSString).utf8String, -1, nil)
+
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            let id = sqlite3_column_int64(stmt, 0)
+            let pathStr = String(cString: sqlite3_column_text(stmt, 1))
+            let mtimeSec = sqlite3_column_double(stmt, 2)
+            let size = sqlite3_column_int64(stmt, 3)
+            return FileRecord(id: id, path: pathStr, mtime: Date(timeIntervalSince1970: mtimeSec), size: size)
+        }
+        return nil
+    }
+
+    /// Fetches all indexed files mapped by their file paths.
+    public func getAllIndexedFiles() throws -> [String: FileRecord] {
+        let sql = "SELECT id, path, mtime, size FROM indexed_files;"
+        var stmt: OpaquePointer?
+        try prepareStatement(sql, into: &stmt)
+        defer { sqlite3_finalize(stmt) }
+
+        var files: [String: FileRecord] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let id = sqlite3_column_int64(stmt, 0)
+            let pathStr = String(cString: sqlite3_column_text(stmt, 1))
+            let mtimeSec = sqlite3_column_double(stmt, 2)
+            let size = sqlite3_column_int64(stmt, 3)
+            let record = FileRecord(id: id, path: pathStr, mtime: Date(timeIntervalSince1970: mtimeSec), size: size)
+            files[pathStr] = record
+        }
+        return files
+    }
+
+    /// Deletes a file and all its associated text chunks and vector embeddings.
+    public func deleteFile(id: Int64) throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            // Delete corresponding vector embeddings
+            let delVecSQL = "DELETE FROM vec_chunks WHERE chunk_id IN (SELECT id FROM text_chunks WHERE file_id = ?);"
+            var vecStmt: OpaquePointer?
+            try prepareStatement(delVecSQL, into: &vecStmt)
+            sqlite3_bind_int64(vecStmt, 1, id)
+            if sqlite3_step(vecStmt) != SQLITE_DONE {
+                sqlite3_finalize(vecStmt)
+                throw StoreError.sqlError("vec_chunks deletion failed: \(lastErrorMessage())")
+            }
+            sqlite3_finalize(vecStmt)
+
+            // Delete text chunks
+            let delChunkSQL = "DELETE FROM text_chunks WHERE file_id = ?;"
+            var chunkStmt: OpaquePointer?
+            try prepareStatement(delChunkSQL, into: &chunkStmt)
+            sqlite3_bind_int64(chunkStmt, 1, id)
+            if sqlite3_step(chunkStmt) != SQLITE_DONE {
+                sqlite3_finalize(chunkStmt)
+                throw StoreError.sqlError("text_chunks deletion failed: \(lastErrorMessage())")
+            }
+            sqlite3_finalize(chunkStmt)
+
+            // Delete file record
+            let delFileSQL = "DELETE FROM indexed_files WHERE id = ?;"
+            var fileStmt: OpaquePointer?
+            try prepareStatement(delFileSQL, into: &fileStmt)
+            sqlite3_bind_int64(fileStmt, 1, id)
+            if sqlite3_step(fileStmt) != SQLITE_DONE {
+                sqlite3_finalize(fileStmt)
+                throw StoreError.sqlError("indexed_files deletion failed: \(lastErrorMessage())")
+            }
+            sqlite3_finalize(fileStmt)
+
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    /// Deletes a file by path and all its associated text chunks and vector embeddings.
+    public func deleteFile(path: String) throws {
+        if let file = try getFile(byPath: path) {
+            try deleteFile(id: file.id)
+        }
     }
 
     // MARK: - Chunk Operations
@@ -246,9 +361,10 @@ public final class VectorStore {
         )
 
         let sql = """
-            SELECT vc.chunk_id, vc.distance, tc.content
+            SELECT vc.chunk_id, f.id, f.path, vc.distance, tc.content
             FROM vec_chunks vc
             JOIN text_chunks tc ON tc.id = vc.chunk_id
+            JOIN indexed_files f ON f.id = tc.file_id
             WHERE vc.embedding MATCH ? AND k = ?
             ORDER BY vc.distance;
         """
@@ -274,14 +390,22 @@ public final class VectorStore {
         var results: [SearchResult] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let chunkId = sqlite3_column_int64(stmt, 0)
-            let distance = Float(sqlite3_column_double(stmt, 1))
+            let fileId = sqlite3_column_int64(stmt, 1)
+            let filePath = String(cString: sqlite3_column_text(stmt, 2))
+            let distance = Float(sqlite3_column_double(stmt, 3))
             let content: String
-            if let cStr = sqlite3_column_text(stmt, 2) {
+            if let cStr = sqlite3_column_text(stmt, 4) {
                 content = String(cString: cStr)
             } else {
                 content = ""
             }
-            results.append(SearchResult(chunkId: chunkId, distance: distance, content: content))
+            results.append(SearchResult(
+                chunkId: chunkId,
+                fileId: fileId,
+                filePath: filePath,
+                distance: distance,
+                content: content
+            ))
         }
 
         return results

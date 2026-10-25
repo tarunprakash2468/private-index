@@ -31,7 +31,10 @@ let package = Package(
         .target(
             name: "PrivateIndexEngine",
             dependencies: ["CSQLiteVec"],
-            path: "Sources/PrivateIndexEngine"
+            path: "Sources/PrivateIndexEngine",
+            resources: [
+                .process("Resources")
+            ]
         ),
         // Unit tests
         .testTarget(

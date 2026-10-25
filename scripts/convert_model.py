@@ -137,6 +137,15 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
     mlmodel.save(output_path)
     print(f"✅ Model saved to {output_path}")
 
+    # Export vocab.txt for the Swift BertTokenizer
+    try:
+        vocab_dest = Path(__file__).resolve().parent.parent / "Packages" / "PrivateIndexEngine" / "Sources" / "PrivateIndexEngine" / "Resources" / "vocab.txt"
+        vocab_dest.parent.mkdir(parents=True, exist_ok=True)
+        tokenizer.save_vocabulary(str(vocab_dest.parent))
+        print(f"✅ Vocabulary saved to {vocab_dest}")
+    except Exception as e:
+        print(f"⚠️ Note: Could not export vocab.txt automatically: {e}")
+
     return output_path
 
 
