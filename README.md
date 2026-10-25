@@ -58,6 +58,7 @@ Private Index indexes over 30 plain-text, markdown, and code formats:
 
 | Category | Extensions |
 |---|---|
+| **Documents & PDFs** | `.pdf` (Digital PDFs via `PDFKit` + Scanned/Image-Only PDFs via native Apple `Vision` OCR) |
 | **Notes & Text** | `.txt`, `.text`, `.md`, `.markdown`, `.mdown`, `.mkd`, `.adoc`, `.rst`, `.tex` |
 | **Code & Scripts** | `.swift`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.c`, `.h`, `.cpp`, `.rs`, `.go`, `.java`, `.kt`, `.rb`, `.sh`, `.zsh`, `.bash`, `.lua`, `.sql` |
 | **Config & Data** | `.json`, `.yaml`, `.yml`, `.toml`, `.csv`, `.tsv`, `.ini`, `.cfg`, `.conf`, `.plist`, `.env`, `.xml`, `.html`, `.css` |

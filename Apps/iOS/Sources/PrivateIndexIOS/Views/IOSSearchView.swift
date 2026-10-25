@@ -99,8 +99,8 @@ struct IOSResultCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Header
                 HStack {
-                    Image(systemName: "doc.text.fill")
-                        .foregroundStyle(Color.accentColor)
+                    Image(systemName: fileName.lowercased().hasSuffix(".pdf") ? "doc.viewfinder.fill" : "doc.text.fill")
+                        .foregroundStyle(fileName.lowercased().hasSuffix(".pdf") ? Color.red : Color.accentColor)
 
                     Text(fileName)
                         .font(.system(.subheadline, weight: .semibold))

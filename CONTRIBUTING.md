@@ -16,6 +16,12 @@ Private Index is a zero-cloud, privacy-preserving semantic search engine for mac
                                                  │ File URLs
                                                  ▼
                                  ┌────────────────────────────────┐
+                                 │      DocumentReader.swift      │
+                                 │ (Plain text, PDFKit, Vision OCR│
+                                 └───────────────┬────────────────┘
+                                                 │ Extracted Text
+                                                 ▼
+                                 ┌────────────────────────────────┐
                                  │       TextChunker.swift        │
                                  │  (500 char window, 100 overlap)│
                                  └───────────────┬────────────────┘
@@ -52,7 +58,11 @@ Private Index is a zero-cloud, privacy-preserving semantic search engine for mac
    - Prevents recursive sync loops where database writes trigger iCloud re-indexing.
 5. **Dataless File Handling (`FileCrawler.swift`)**:
    - Inspects `URLResourceKey.ubiquitousItemDownloadingStatusKey` to skip evicted (`.notDownloaded`) files, preventing unexpected cloud downloads and network stalls.
-6. **Orchestrator (`IndexCoordinator.swift`)**:
+6. **Unified Document Reader (`DocumentReader.swift`)**:
+   - Decodes plain text, Markdown, and source code files with UTF-8, Latin-1, and CP1252 fallbacks.
+   - Parses digital PDFs via Apple `PDFKit` (`page.string`).
+   - Integrates on-device OCR fallback via Apple `Vision` (`VNRecognizeTextRequest`) to extract text from scanned or image-only PDF pages without cloud calls.
+7. **Orchestrator (`IndexCoordinator.swift`)**:
    - Swift concurrency `actor` coordinating crawling, incremental change detection (skipping unchanged files based on `mtime` and `size`), pruning deleted files, and natural language search.
 
 ---

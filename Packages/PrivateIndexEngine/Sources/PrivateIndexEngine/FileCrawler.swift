@@ -13,6 +13,8 @@ public struct FileCrawler: Sendable {
 
     /// File extensions that are considered indexable plain-text content.
     public static let supportedExtensions: Set<String> = [
+        // Documents
+        "pdf",
         // Plain text
         "txt", "text",
         // Markdown

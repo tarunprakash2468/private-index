@@ -160,8 +160,8 @@ public actor IndexCoordinator {
             let progress = totalToProcess > 0 ? Float(index) / Float(totalToProcess) : 1.0
             onProgress?(progress, "Indexing \(item.url.lastPathComponent)...")
 
-            // Read file content
-            guard let content = try? String(contentsOf: item.url, encoding: .utf8) else {
+            // Read file content (plain text, markdown, source code, or PDF)
+            guard let content = DocumentReader.extractText(from: item.url), !content.isEmpty else {
                 continue
             }
 
