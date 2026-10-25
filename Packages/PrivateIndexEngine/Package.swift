@@ -37,7 +37,7 @@ let package = Package(
             dependencies: ["CSQLiteVec"],
             path: "Sources/PrivateIndexEngine",
             resources: [
-                .process("Resources")
+                .process("Resources/vocab.txt")
             ]
         ),
         // Developer CLI
