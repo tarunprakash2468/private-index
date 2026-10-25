@@ -34,8 +34,8 @@ class PrivateIndex < Formula
   end
 
   test do
-    assert_match "pi — Private Index", shell_output("#{bin}/pi help")
-    assert_match "pi — Private Index", shell_output("#{bin}/private-index help")
+    assert_match "Private Index", shell_output("#{bin}/pi help")
+    assert_match "Private Index", shell_output("#{bin}/private-index help")
     assert_match "Private Index Database Statistics", shell_output("#{bin}/pi stats")
   end
 end
