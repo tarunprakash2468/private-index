@@ -56,6 +56,12 @@ Run commands with the sleek **`pi`** shorthand (or `private-index`):
 # Index a directory
 pi index ~/Documents
 
+# Live folder watching daemon (2.0s debounce & sleep protection)
+pi watch ~/Documents
+
+# Run headlessly 24/7 on login via macOS launchd LaunchAgent
+pi watch --install-launchagent ~/Documents
+
 # Search documents using Hybrid Search (default: Core ML vector + FTS5 BM25 with RRF)
 pi search "zero-cloud privacy architecture" --limit 5
 

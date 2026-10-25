@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import ServiceManagement
 import PrivateIndexEngine
 
 // MARK: - AppState
@@ -38,6 +39,39 @@ public final class AppState {
         }
     }
 
+    public var launchAtLogin: Bool {
+        get {
+            if #available(macOS 13.0, *) {
+                return SMAppService.mainApp.status == .enabled
+            }
+            return UserDefaults.standard.bool(forKey: "launchAtLogin")
+        }
+        set {
+            if #available(macOS 13.0, *) {
+                do {
+                    if newValue {
+                        if SMAppService.mainApp.status != .enabled {
+                            try SMAppService.mainApp.register()
+                        }
+                    } else {
+                        if SMAppService.mainApp.status == .enabled {
+                            try SMAppService.mainApp.unregister()
+                        }
+                    }
+                } catch {
+                    print("SMAppService registration failed: \(error.localizedDescription)")
+                }
+            }
+            UserDefaults.standard.set(newValue, forKey: "launchAtLogin")
+        }
+    }
+
+    public var preventSleepDuringIndexing: Bool {
+        didSet {
+            UserDefaults.standard.set(preventSleepDuringIndexing, forKey: "preventSleepDuringIndexing")
+        }
+    }
+
     // MARK: - Dependencies
     private var vectorStore: VectorStore?
     private var coordinator: IndexCoordinator?
@@ -47,6 +81,12 @@ public final class AppState {
     // MARK: - Initialization
 
     public init() {
+        if UserDefaults.standard.object(forKey: "preventSleepDuringIndexing") != nil {
+            self.preventSleepDuringIndexing = UserDefaults.standard.bool(forKey: "preventSleepDuringIndexing")
+        } else {
+            self.preventSleepDuringIndexing = true
+        }
+
         // Load persisted directory or use iCloud Drive Documents
         if let savedPath = UserDefaults.standard.string(forKey: "monitoredDirectoryPath"),
            FileManager.default.fileExists(atPath: savedPath) {
@@ -100,11 +140,23 @@ public final class AppState {
     }
 
     private func setupWatcher() {
-        directoryWatcher = DirectoryWatcher(debounceInterval: 2.0) { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.startIndexing()
+        directoryWatcher = DirectoryWatcher(
+            debounceInterval: 2.0,
+            onPathsChanged: { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    if let watcher = self.directoryWatcher, watcher.needsFullRescan {
+                        watcher.needsFullRescan = false
+                        await self.startIndexing()
+                    }
+                }
+            },
+            onChange: { [weak self] in
+                Task { @MainActor [weak self] in
+                    await self?.startIndexing()
+                }
             }
-        }
+        )
         directoryWatcher?.start(watching: monitoredDirectoryURL)
     }
 
@@ -164,6 +216,14 @@ public final class AppState {
         isIndexing = true
         indexProgress = 0.0
         indexStatusMessage = "Scanning..."
+
+        let powerAssertion = PowerAssertion(name: "Private Index macOS Indexing")
+        if preventSleepDuringIndexing {
+            powerAssertion.take()
+        }
+        defer {
+            powerAssertion.release()
+        }
 
         do {
             try iCloudContainerManager.shared.validateTargetFolder(monitoredDirectoryURL)
