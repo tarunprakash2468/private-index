@@ -92,12 +92,25 @@ if [[ -d "${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Re
     cp -R "${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc" "${APP_DIR}/Contents/Resources/"
 fi
 
+# Copy AppIcon.icns into Resources
+if [[ -f "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" ]]; then
+    cp "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
+fi
+
 # Build .dmg disk image with /Applications symlink
 DMG_STAGE="/tmp/dmg-stage"
 rm -rf "${DMG_STAGE}"
 mkdir -p "${DMG_STAGE}"
 cp -R "${APP_DIR}" "${DMG_STAGE}/Private Index.app"
 ln -s /Applications "${DMG_STAGE}/Applications"
+
+# Set DMG volume icon if AppIcon.icns is present
+if [[ -f "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" ]]; then
+    cp "${REPO_ROOT}/Apps/macOS/Resources/AppIcon.icns" "${DMG_STAGE}/.VolumeIcon.icns"
+    if command -v SetFile >/dev/null 2>&1; then
+        SetFile -a C "${DMG_STAGE}" || true
+    fi
+fi
 
 DMG_OUTPUT="${DIST_DIR}/PrivateIndexMac-${VERSION}.dmg"
 rm -f "${DMG_OUTPUT}"

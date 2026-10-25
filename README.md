@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" width="128" height="128" alt="Private Index App Icon" />
+</p>
+
 # Private Index
 
 > **Zero-cloud, privacy-preserving semantic search for macOS and iOS.**  

@@ -59,6 +59,20 @@ if [[ -f "${IOS_BIN}" ]]; then
     chmod +x "${STAGE_DIR}/Payload/PrivateIndexIOS.app/PrivateIndexIOS"
 fi
 
+# Compile and bundle Asset Catalog (AppIcon, Assets.car)
+if [[ -d "${REPO_ROOT}/Apps/iOS/Assets.xcassets" ]]; then
+    echo "==> Compiling Asset Catalog for iOS..."
+    xcrun actool "${REPO_ROOT}/Apps/iOS/Assets.xcassets" \
+        --compile "${STAGE_DIR}/Payload/PrivateIndexIOS.app" \
+        --platform iphoneos \
+        --target-device iphone \
+        --target-device ipad \
+        --minimum-deployment-target 17.0 \
+        --app-icon AppIcon \
+        --output-partial-info-plist /tmp/assetcatalog_info.plist >/dev/null 2>&1 || true
+    rm -f /tmp/assetcatalog_info.plist
+fi
+
 # Copy Info.plist
 sed "s/1.0.0/${VERSION}/g" "${REPO_ROOT}/Apps/iOS/Info.plist" > "${STAGE_DIR}/Payload/PrivateIndexIOS.app/Info.plist"
 
