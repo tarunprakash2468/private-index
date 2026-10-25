@@ -1,0 +1,45 @@
+name: Model Validation & Drift Detection
+
+on:
+  schedule:
+    # Run weekly on Sunday at 09:00 UTC
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/convert_model.py'
+      - 'scripts/requirements.txt'
+
+jobs:
+  validate-model:
+    name: Validate Core ML Model & Embedding Engine
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          echo "Active Xcode: $(xcode-select -p)"
+          swift --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "scripts/requirements.txt"
+
+      - name: Install Python Dependencies
+        run: |
+          pip install -r scripts/requirements.txt
+
+      - name: Convert & Verify Core ML Model
+        run: |
+          python3 scripts/convert_model.py --compile --verify
+
+      - name: Validate PrivateIndexEngine with Compiled Model
+        run: |
+          cd Packages/PrivateIndexEngine
+          swift test

@@ -64,6 +64,26 @@ jobs:
           echo "Active Xcode: $(xcode-select -p)"
           swift --version
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "scripts/requirements.txt"
+
+      - name: Cache Core ML Embedding Model
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc
+          key: coreml-model-${{ runner.os }}-${{ hashFiles('scripts/requirements.txt', 'scripts/convert_model.py') }}
+
+      - name: Compile & Verify Core ML Embedding Model
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: |
+          pip install -r scripts/requirements.txt
+          python3 scripts/convert_model.py --compile --verify
+
       - name: Package macOS Assets (.dmg and CLI tarball)
         run: |
           ./scripts/package_macos.sh "${{ steps.version_step.outputs.version }}"
@@ -117,6 +137,26 @@ jobs:
           fi
           echo "version=${VER}" >> $GITHUB_OUTPUT
           echo "Deploying version: ${VER}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "scripts/requirements.txt"
+
+      - name: Cache Core ML Embedding Model
+        id: cache-ios-model
+        uses: actions/cache@v4
+        with:
+          path: Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc
+          key: coreml-model-${{ runner.os }}-${{ hashFiles('scripts/requirements.txt', 'scripts/convert_model.py') }}
+
+      - name: Compile & Verify Core ML Embedding Model
+        if: steps.cache-ios-model.outputs.cache-hit != 'true'
+        run: |
+          pip install -r scripts/requirements.txt
+          python3 scripts/convert_model.py --compile --verify
 
       - name: Deploy to TestFlight
         env:

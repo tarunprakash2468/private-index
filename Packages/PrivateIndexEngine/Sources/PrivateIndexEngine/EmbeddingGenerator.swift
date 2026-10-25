@@ -74,27 +74,55 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
         self.init(model: model, tokenizer: tokenizer, dimension: dimension, maxSequenceLength: maxSequenceLength)
     }
 
-    /// Loads the bundled Core ML model from Bundle.module or Bundle.main, falling back to mock if unavailable.
+    /// Loads the Core ML model from bundle resources, Homebrew pkgshare, or user directory, falling back to mock if unavailable.
     public static func loadDefaultModel(tokenizer: BertTokenizer) -> EmbeddingGenerator {
+        let modelName = "all-MiniLM-L6-v2"
+        let fileManager = FileManager.default
+
         // 1. Check module bundle (SwiftPM resources)
-        if let url = Bundle.module.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlmodelc"),
+        if let url = Bundle.module.url(forResource: modelName, withExtension: "mlmodelc"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }
-        if let url = Bundle.module.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlpackage"),
+        if let url = Bundle.module.url(forResource: modelName, withExtension: "mlpackage"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }
-        // 2. Check main app bundle
-        if let url = Bundle.main.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlmodelc"),
+
+        // 2. Check main app bundle (macOS & iOS app Contents/Resources)
+        if let url = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }
-        if let url = Bundle.main.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlpackage"),
+        if let url = Bundle.main.url(forResource: modelName, withExtension: "mlpackage"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }
-        // 3. Fallback for unit testing and offline development
+
+        // 3. Check Homebrew pkgshare and standard locations
+        let standardPaths = [
+            "/opt/homebrew/share/private-index/models/\(modelName).mlmodelc",
+            "/usr/local/share/private-index/models/\(modelName).mlmodelc",
+            "/opt/homebrew/share/private-index/\(modelName).mlmodelc",
+            "/usr/local/share/private-index/\(modelName).mlmodelc"
+        ]
+        for path in standardPaths {
+            let url = URL(fileURLWithPath: path)
+            if fileManager.fileExists(atPath: url.path),
+               let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
+                return model
+            }
+        }
+
+        // 4. Check user models directory (~/.private-index/models/)
+        let homeDir = fileManager.homeDirectoryForCurrentUser
+        let userModelURL = homeDir.appendingPathComponent(".private-index/models/\(modelName).mlmodelc")
+        if fileManager.fileExists(atPath: userModelURL.path),
+           let model = try? CoreMLEmbeddingModel(modelURL: userModelURL, tokenizer: tokenizer) {
+            return model
+        }
+
+        // 5. Fallback for unit testing and offline development
         return MockEmbeddingModel()
     }
 

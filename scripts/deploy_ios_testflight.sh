@@ -73,6 +73,13 @@ if [[ -d "${REPO_ROOT}/Apps/iOS/Assets.xcassets" ]]; then
     rm -f /tmp/assetcatalog_info.plist
 fi
 
+# Bundle compiled Core ML model into iOS app if present
+MODEL_SOURCE="${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc"
+if [[ -d "${MODEL_SOURCE}" ]]; then
+    echo "==> Bundling Core ML Embedding Model into iOS app..."
+    cp -R "${MODEL_SOURCE}" "${STAGE_DIR}/Payload/PrivateIndexIOS.app/"
+fi
+
 # Copy Info.plist
 sed "s/1.0.0/${VERSION}/g" "${REPO_ROOT}/Apps/iOS/Info.plist" > "${STAGE_DIR}/Payload/PrivateIndexIOS.app/Info.plist"
 

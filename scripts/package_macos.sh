@@ -51,7 +51,16 @@ ln -sf "private-index-cli" "${CLI_STAGE}/pi"
 ln -sf "private-index-cli" "${CLI_STAGE}/private-index"
 cp "${REPO_ROOT}/LICENSE" "${CLI_STAGE}/LICENSE"
 cp -R "${REPO_ROOT}/completions" "${CLI_STAGE}/completions"
-tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions
+
+# Bundle compiled Core ML model into CLI stage if present
+MODEL_SOURCE="${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc"
+if [[ -d "${MODEL_SOURCE}" ]]; then
+    mkdir -p "${CLI_STAGE}/models"
+    cp -R "${MODEL_SOURCE}" "${CLI_STAGE}/models/all-MiniLM-L6-v2.mlmodelc"
+    tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions models
+else
+    tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions
+fi
 rm -rf "${CLI_STAGE}"
 
 # -----------------------------------------------------------------------------

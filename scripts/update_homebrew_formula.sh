@@ -52,6 +52,11 @@ class PrivateIndex < Formula
       bash_completion.install "completions/bash/pi.bash" => "pi"
       fish_completion.install "completions/fish/pi.fish" => "pi.fish"
     end
+
+    # Core ML Embedding Model
+    if File.directory?("models/all-MiniLM-L6-v2.mlmodelc")
+      pkgshare.install "models/all-MiniLM-L6-v2.mlmodelc"
+    end
   end
 
   test do
