@@ -2,23 +2,39 @@ import Foundation
 
 /// Safe resource locator for PrivateIndexEngine that avoids fatalError traps when bundles are missing.
 public enum ResourceLocator {
-    private final class TokenFinder {}
-
     /// The name of the SwiftPM-generated resource bundle for this module.
     public static let bundleName = "PrivateIndexEngine_PrivateIndexEngine.bundle"
 
     /// Safely attempts to locate the resource bundle containing vocabulary and model files.
     public static var engineBundle: Bundle? {
-        var candidates: [URL?] = [
-            // When running inside an application bundle (macOS / iOS app Contents/Resources)
+        let fileManager = FileManager.default
+
+        // 1. Check if SwiftPM's Bundle.module candidates exist.
+        // If any candidate directory contains the bundle, Bundle.module is safe to call without fatalError.
+        let moduleCandidates: [URL?] = [
             Bundle.main.resourceURL,
-            Bundle(for: TokenFinder.self).resourceURL,
-            // When running as a CLI tool (adjacent to binary in bin/ or Cellar/bin/)
+            Bundle(for: BertTokenizer.self).resourceURL,
+            Bundle.main.bundleURL
+        ]
+        for candidate in moduleCandidates {
+            if let candidate = candidate {
+                let bundlePath = candidate.appendingPathComponent(bundleName).path
+                if fileManager.fileExists(atPath: bundlePath) {
+                    return Bundle.module
+                }
+            }
+        }
+
+        // 2. Safe candidate search without touching Bundle.module
+        var candidates: [URL?] = [
+            Bundle.main.resourceURL,
+            Bundle(for: BertTokenizer.self).resourceURL,
+            Bundle(for: BertTokenizer.self).bundleURL,
+            Bundle(for: BertTokenizer.self).bundleURL.deletingLastPathComponent(),
             Bundle.main.bundleURL,
             Bundle.main.bundleURL.deletingLastPathComponent(),
             Bundle.main.bundleURL.appendingPathComponent("Resources"),
             Bundle.main.bundleURL.appendingPathComponent("bin"),
-            // Standard Homebrew / system locations
             URL(fileURLWithPath: "/opt/homebrew/share/private-index"),
             URL(fileURLWithPath: "/usr/local/share/private-index"),
             URL(fileURLWithPath: "/opt/homebrew/bin"),
@@ -35,7 +51,7 @@ public enum ResourceLocator {
         for candidate in candidates {
             guard let candidate = candidate else { continue }
             let bundleURL = candidate.appendingPathComponent(bundleName)
-            if let bundle = Bundle(url: bundleURL) {
+            if fileManager.fileExists(atPath: bundleURL.path), let bundle = Bundle(url: bundleURL) {
                 return bundle
             }
         }
@@ -49,12 +65,19 @@ public enum ResourceLocator {
             return url
         }
 
-        // 2. Try main bundle
+        // 2. Try all loaded bundles
+        for bundle in Bundle.allBundles {
+            if let url = bundle.url(forResource: name, withExtension: ext) {
+                return url
+            }
+        }
+
+        // 3. Try main bundle
         if let url = Bundle.main.url(forResource: name, withExtension: ext) {
             return url
         }
 
-        // 3. Try standard search paths directly (e.g. loose vocab.txt in Homebrew share or bin)
+        // 4. Try standard search paths directly (e.g. loose vocab.txt in Homebrew share or bin)
         let fileName = ext.isEmpty ? name : "\(name).\(ext)"
         let searchDirs: [URL?] = [
             Bundle.main.bundleURL,
