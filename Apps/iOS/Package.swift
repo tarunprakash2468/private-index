@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "PrivateIndexIOS",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v17),
+        .macOS(.v14),
     ],
     products: [
         .library(name: "PrivateIndexIOS", targets: ["PrivateIndexIOS"])
