@@ -8,7 +8,7 @@ class PrivateIndex < Formula
   depends_on arch: :arm64
 
   url "https://github.com/tarunprakash2468/private-index/releases/download/v#{version}/private-index-cli-#{version}-darwin-arm64.tar.gz"
-  sha256 "e7e4f1f08e2c5c19eacfca09cdb748ff7ea9913b5fd7c743ff59df1cf7653124"
+  sha256 "b22406879a5b94e5df25593559922ec1a723006bafe1b5781181acd29a4ce2b6"
 
   def install
     bin.install "private-index-cli" => "pi"
