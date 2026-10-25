@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.2](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.1...private-index-v0.2.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **package:** code sign macOS app bundle in release DMG ([b9ffad3](https://github.com/tarunprakash2468/private-index/commit/b9ffad34b371b3bd1bd2ba7aa1a8b8477b802577))
+
+
+### CI/CD & Automation
+
+* ensure release pipeline dynamically generates sha256 and syncs formula ([212c12c](https://github.com/tarunprakash2468/private-index/commit/212c12cd92971b1504849ddace4827766cf42860))
+
 ## [0.2.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.0...private-index-v0.2.1) (2026-10-25)
 
 
