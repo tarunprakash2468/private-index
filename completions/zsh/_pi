@@ -32,7 +32,10 @@ _pi() {
                     ;;
                 search)
                     _arguments \
+                        '--mode[Search mode (hybrid, vector, keyword)]:mode:(hybrid vector keyword)' \
                         '--limit[Maximum number of results to return]:limit:' \
+                        '--vector-weight[Vector weight for hybrid search]:weight:' \
+                        '--keyword-weight[Keyword weight for hybrid search]:weight:' \
                         '*:query:'
                     ;;
             esac

@@ -48,6 +48,24 @@ public final class VectorStore {
         }
     }
 
+    /// A full-text keyword search result scored by SQLite FTS5 BM25.
+    public struct KeywordSearchResult: Sendable, Equatable {
+        public let chunkId: Int64
+        public let fileId: Int64
+        public let filePath: String
+        /// Raw BM25 score from SQLite FTS5 (negative float, where more negative indicates a stronger match).
+        public let score: Float
+        public let content: String
+
+        public init(chunkId: Int64, fileId: Int64, filePath: String, score: Float, content: String) {
+            self.chunkId = chunkId
+            self.fileId = fileId
+            self.filePath = filePath
+            self.score = score
+            self.content = content
+        }
+    }
+
     /// Errors specific to VectorStore operations.
     public enum StoreError: Error, CustomStringConvertible {
         case openFailed(String)
@@ -71,7 +89,7 @@ public final class VectorStore {
     /// The embedding dimension. Must match the Core ML model output.
     public static let embeddingDimension = 384
 
-    private var db: OpaquePointer?
+    internal var db: OpaquePointer?
 
     // MARK: - Initialization
 
@@ -126,6 +144,7 @@ public final class VectorStore {
     /// - `indexed_files`: Tracks indexed file metadata (path, mtime, size).
     /// - `text_chunks`: Stores chunked text content linked to a file.
     /// - `vec_chunks`: Virtual table for vector similarity search (cosine distance).
+    /// - `documents_fts`: Virtual table for FTS5 BM25 keyword search with Porter stemming.
     public func createSchema() throws {
         try execute("""
             CREATE TABLE IF NOT EXISTS indexed_files (
@@ -150,6 +169,38 @@ public final class VectorStore {
                 chunk_id    INTEGER PRIMARY KEY,
                 embedding   float[384] distance_metric=cosine
             );
+        """)
+
+        try execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                file_path,
+                content,
+                tokenize = 'porter unicode61'
+            );
+        """)
+
+        try execute("""
+            CREATE TRIGGER IF NOT EXISTS text_chunks_ai AFTER INSERT ON text_chunks BEGIN
+                INSERT INTO documents_fts (rowid, file_path, content)
+                SELECT new.id, f.path, new.content
+                FROM indexed_files f
+                WHERE f.id = new.file_id;
+            END;
+        """)
+
+        try execute("""
+            CREATE TRIGGER IF NOT EXISTS text_chunks_ad AFTER DELETE ON text_chunks BEGIN
+                DELETE FROM documents_fts WHERE rowid = old.id;
+            END;
+        """)
+
+        // Backfill any pre-existing text chunks into documents_fts
+        try execute("""
+            INSERT OR IGNORE INTO documents_fts (rowid, file_path, content)
+            SELECT tc.id, f.path, tc.content
+            FROM text_chunks tc
+            JOIN indexed_files f ON f.id = tc.file_id
+            WHERE tc.id NOT IN (SELECT rowid FROM documents_fts);
         """)
     }
 
@@ -215,7 +266,7 @@ public final class VectorStore {
         return files
     }
 
-    /// Deletes a file and all its associated text chunks and vector embeddings.
+    /// Deletes a file and all its associated text chunks, vector embeddings, and FTS entries.
     public func deleteFile(id: Int64) throws {
         try execute("BEGIN TRANSACTION;")
         do {
@@ -229,6 +280,17 @@ public final class VectorStore {
                 throw StoreError.sqlError("vec_chunks deletion failed: \(lastErrorMessage())")
             }
             sqlite3_finalize(vecStmt)
+
+            // Delete corresponding FTS entries explicitly
+            let delFtsSQL = "DELETE FROM documents_fts WHERE rowid IN (SELECT id FROM text_chunks WHERE file_id = ?);"
+            var ftsStmt: OpaquePointer?
+            try prepareStatement(delFtsSQL, into: &ftsStmt)
+            sqlite3_bind_int64(ftsStmt, 1, id)
+            if sqlite3_step(ftsStmt) != SQLITE_DONE {
+                sqlite3_finalize(ftsStmt)
+                throw StoreError.sqlError("documents_fts deletion failed: \(lastErrorMessage())")
+            }
+            sqlite3_finalize(ftsStmt)
 
             // Delete text chunks
             let delChunkSQL = "DELETE FROM text_chunks WHERE file_id = ?;"
@@ -252,6 +314,21 @@ public final class VectorStore {
             }
             sqlite3_finalize(fileStmt)
 
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    /// Clears and purges all indexed files, text chunks, vector embeddings, and FTS entries.
+    public func reset() throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try execute("DELETE FROM documents_fts;")
+            try execute("DELETE FROM vec_chunks;")
+            try execute("DELETE FROM text_chunks;")
+            try execute("DELETE FROM indexed_files;")
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -411,6 +488,104 @@ public final class VectorStore {
         return results
     }
 
+    /// Performs a full-text BM25 keyword search using the SQLite FTS5 `documents_fts` virtual table.
+    ///
+    /// - Parameters:
+    ///   - query: Freeform keyword or query string.
+    ///   - limit: Maximum number of results to return (default 10).
+    /// - Returns: An array of `KeywordSearchResult` ordered by relevance (BM25 score ascending / most negative).
+    public func searchBM25(query: String, limit: Int = 10) throws -> [KeywordSearchResult] {
+        guard let ftsQuery = Self.buildFTS5Query(from: query) else {
+            return []
+        }
+
+        let sql = """
+            SELECT
+                tc.id,
+                f.id,
+                f.path,
+                bm25(documents_fts),
+                tc.content
+            FROM documents_fts
+            JOIN text_chunks tc ON tc.id = documents_fts.rowid
+            JOIN indexed_files f ON f.id = tc.file_id
+            WHERE documents_fts MATCH ?
+            ORDER BY bm25(documents_fts) ASC
+            LIMIT ?;
+        """
+
+        var stmt: OpaquePointer?
+        try prepareStatement(sql, into: &stmt)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (ftsQuery as NSString).utf8String, -1, nil)
+        sqlite3_bind_int(stmt, 2, Int32(limit))
+
+        var results: [KeywordSearchResult] = []
+        var stepResult = sqlite3_step(stmt)
+        while stepResult == SQLITE_ROW {
+            let chunkId = sqlite3_column_int64(stmt, 0)
+            let fileId = sqlite3_column_int64(stmt, 1)
+            let filePath = String(cString: sqlite3_column_text(stmt, 2))
+            let score = Float(sqlite3_column_double(stmt, 3))
+            let content: String
+            if let cStr = sqlite3_column_text(stmt, 4) {
+                content = String(cString: cStr)
+            } else {
+                content = ""
+            }
+            results.append(KeywordSearchResult(
+                chunkId: chunkId,
+                fileId: fileId,
+                filePath: filePath,
+                score: score,
+                content: content
+            ))
+            stepResult = sqlite3_step(stmt)
+        }
+
+        if stepResult != SQLITE_DONE && stepResult != SQLITE_ROW {
+            throw StoreError.sqlError("searchBM25 step failed: \(lastErrorMessage()) (code \(stepResult))")
+        }
+
+        return results
+    }
+
+    /// Sanitizes and constructs an FTS5 search query from freeform user input.
+    ///
+    /// Supports exact symbol matching (UUIDs, error codes, function signatures),
+    /// multi-term queries (ranking exact phrases and all/any terms higher),
+    /// and prefix matching for partial tokens.
+    public static func buildFTS5Query(from rawQuery: String) -> String? {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Split by whitespace
+        let rawTokens = trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        guard !rawTokens.isEmpty else { return nil }
+
+        // Escape double quotes inside tokens
+        let escapedTokens = rawTokens.map { token -> String in
+            token.replacingOccurrences(of: "\"", with: "\"\"")
+        }
+
+        if escapedTokens.count == 1 {
+            let token = escapedTokens[0]
+            // For single token: exact match OR prefix match
+            return "\"\(token)\" OR \"\(token)\"*"
+        }
+
+        // Multiple tokens:
+        // 1. Full phrase: "token1 token2 token3"
+        let fullPhrase = escapedTokens.joined(separator: " ")
+        // 2. AND conjunction: "token1" AND "token2" AND "token3"
+        let andConjunction = escapedTokens.map { "\"\( $0 )\"" }.joined(separator: " AND ")
+        // 3. OR conjunction: "token1" OR "token2" OR "token3"
+        let orConjunction = escapedTokens.map { "\"\( $0 )\"" }.joined(separator: " OR ")
+
+        return "\"\(fullPhrase)\" OR (\(andConjunction)) OR (\(orConjunction))"
+    }
+
     // MARK: - Lifecycle
 
     /// Closes the database connection.
@@ -421,9 +596,9 @@ public final class VectorStore {
         }
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Internal Helpers
 
-    private func execute(_ sql: String) throws {
+    internal func execute(_ sql: String) throws {
         var errMsg: UnsafeMutablePointer<CChar>?
         let result = sqlite3_exec(db, sql, nil, nil, &errMsg)
         if result != SQLITE_OK {
@@ -433,14 +608,14 @@ public final class VectorStore {
         }
     }
 
-    private func prepareStatement(_ sql: String, into stmt: inout OpaquePointer?) throws {
+    internal func prepareStatement(_ sql: String, into stmt: inout OpaquePointer?) throws {
         let result = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
         guard result == SQLITE_OK else {
             throw StoreError.sqlError("prepare failed: \(lastErrorMessage()) (code \(result))")
         }
     }
 
-    private func lastErrorMessage() -> String {
+    internal func lastErrorMessage() -> String {
         if let db = db {
             return String(cString: sqlite3_errmsg(db))
         }

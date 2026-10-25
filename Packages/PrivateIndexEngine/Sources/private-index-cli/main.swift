@@ -59,16 +59,24 @@ func printHelp() {
     \(ANSI.bold)COMMANDS:\(ANSI.reset)
         \(ANSI.green)index\(ANSI.reset) <path>            Index documents in the specified directory
         \(ANSI.green)watch\(ANSI.reset) [path] [--install-launchagent]  Run background watcher daemon for live folder monitoring
-        \(ANSI.green)search\(ANSI.reset) <query> [--limit N]  Run semantic similarity search for a query
+        \(ANSI.green)search\(ANSI.reset) <query> [options] Run search for a query (default mode: hybrid)
         \(ANSI.green)stats\(ANSI.reset)                   Show database stats and indexed document counts
         \(ANSI.green)reset\(ANSI.reset)                   Clear database and purge all vector embeddings
         \(ANSI.green)help\(ANSI.reset)                    Display this help message
+
+    \(ANSI.bold)SEARCH OPTIONS:\(ANSI.reset)
+        --mode <hybrid|vector|keyword>  Search retrieval mode (default: hybrid)
+        --limit <N>                     Maximum number of results to return (default: 10)
+        --vector-weight <W>             Vector similarity weight for RRF in hybrid mode (default: 0.5)
+        --keyword-weight <W>            BM25 keyword weight for RRF in hybrid mode (default: 0.5)
 
     \(ANSI.bold)EXAMPLES:\(ANSI.reset)
         pi index ~/Documents
         pi watch ~/Documents
         pi watch --install-launchagent
-        pi search "zero-cloud privacy architecture" --limit 5
+        pi search "zero-cloud privacy architecture"
+        pi search "ERR_404_NOT_FOUND" --mode keyword
+        pi search "Apple Neural Engine" --mode hybrid --limit 5
         pi stats
     """)
 }
@@ -104,27 +112,59 @@ func runIndex(path: String) async throws {
     """)
 }
 
-func runSearch(query: String, limit: Int) async throws {
-    print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(limit: \(limit))\(ANSI.reset)\n")
+func runSearch(
+    query: String,
+    limit: Int,
+    mode: SearchMode = .hybrid,
+    vectorWeight: Float = 0.5,
+    keywordWeight: Float = 0.5
+) async throws {
+    print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit))\(ANSI.reset)\n")
     let (_, coordinator) = try setupEngine()
 
     let startTime = Date()
-    let results = try await coordinator.search(query: query, limit: limit)
+    let results = try await coordinator.search(
+        query: query,
+        limit: limit,
+        mode: mode,
+        vectorWeight: vectorWeight,
+        keywordWeight: keywordWeight
+    )
     let elapsed = Date().timeIntervalSince(startTime) * 1000
 
     if results.isEmpty {
-        print("\(ANSI.yellow)No semantic matches found.\(ANSI.reset) Have you indexed any documents?")
+        print("\(ANSI.yellow)No matches found.\(ANSI.reset) Have you indexed any documents?")
         return
     }
 
     print("\(ANSI.cyan)Found \(results.count) results in \(String(format: "%.1f", elapsed))ms:\(ANSI.reset)\n")
 
     for (idx, r) in results.enumerated() {
-        let pct = Int(r.score * 100)
-        let scoreColor = pct >= 85 ? ANSI.green : (pct >= 70 ? ANSI.cyan : ANSI.dim)
         let fileName = URL(fileURLWithPath: r.filePath).lastPathComponent
 
-        print("\(ANSI.bold)\(idx + 1). \(fileName)\(ANSI.reset)  [\(scoreColor)\(pct)% match\(ANSI.reset)]")
+        let matchPill: String
+        switch r.matchType {
+        case "hybrid":
+            matchPill = "\(ANSI.green)[hybrid]\(ANSI.reset)"
+        case "vector":
+            matchPill = "\(ANSI.cyan)[vector]\(ANSI.reset)"
+        case "keyword":
+            matchPill = "\(ANSI.yellow)[keyword]\(ANSI.reset)"
+        default:
+            matchPill = "[\(r.matchType)]"
+        }
+
+        let scoreStr: String
+        if mode == .hybrid {
+            scoreStr = "fusion score: \(ANSI.bold)\(String(format: "%.4f", r.score))\(ANSI.reset)"
+        } else if mode == .vector {
+            let pct = Int(r.score * 100)
+            scoreStr = "\(ANSI.bold)\(pct)% match\(ANSI.reset)"
+        } else {
+            scoreStr = "bm25 score: \(ANSI.bold)\(String(format: "%.4f", r.score))\(ANSI.reset)"
+        }
+
+        print("\(ANSI.bold)\(idx + 1). \(fileName)\(ANSI.reset)  \(matchPill) [\(scoreStr)]")
         print("   \(ANSI.dim)\(r.filePath)\(ANSI.reset)")
 
         // Snippet indented
@@ -160,6 +200,13 @@ func runStats() throws {
 func runReset() throws {
     let dbURL = defaultDatabaseURL()
     if FileManager.default.fileExists(atPath: dbURL.path) {
+        do {
+            let (store, _) = try setupEngine()
+            try store.reset()
+            store.close()
+        } catch {
+            // Proceed to delete file directly if opening or SQL reset fails
+        }
         try FileManager.default.removeItem(at: dbURL)
         print("\(ANSI.green)✔ Database cleared successfully.\(ANSI.reset)")
     } else {
@@ -445,13 +492,48 @@ case "search":
     }
 
     var limit = 10
+    var mode: SearchMode = .hybrid
+    var vectorWeight: Float = 0.5
+    var keywordWeight: Float = 0.5
     var queryTerms: [String] = []
 
     var i = 2
     while i < args.count {
-        if args[i] == "--limit", i + 1 < args.count, let parsedLimit = Int(args[i + 1]) {
+        let arg = args[i]
+        if arg == "--limit", i + 1 < args.count, let parsedLimit = Int(args[i + 1]) {
             limit = parsedLimit
             i += 2
+        } else if arg.hasPrefix("--limit="), let parsedLimit = Int(arg.dropFirst("--limit=".count)) {
+            limit = parsedLimit
+            i += 1
+        } else if arg == "--mode", i + 1 < args.count {
+            let modeRaw = args[i + 1].lowercased()
+            guard let parsedMode = SearchMode(rawValue: modeRaw) else {
+                print("\(ANSI.red)Error:\(ANSI.reset) Invalid mode '\(args[i + 1])'. Valid modes: hybrid, vector, keyword.")
+                exit(1)
+            }
+            mode = parsedMode
+            i += 2
+        } else if arg.hasPrefix("--mode=") {
+            let modeRaw = String(arg.dropFirst("--mode=".count)).lowercased()
+            guard let parsedMode = SearchMode(rawValue: modeRaw) else {
+                print("\(ANSI.red)Error:\(ANSI.reset) Invalid mode '\(modeRaw)'. Valid modes: hybrid, vector, keyword.")
+                exit(1)
+            }
+            mode = parsedMode
+            i += 1
+        } else if (arg == "--vector-weight" || arg == "--w-vector"), i + 1 < args.count, let weight = Float(args[i + 1]) {
+            vectorWeight = weight
+            i += 2
+        } else if arg.hasPrefix("--vector-weight="), let weight = Float(arg.dropFirst("--vector-weight=".count)) {
+            vectorWeight = weight
+            i += 1
+        } else if (arg == "--keyword-weight" || arg == "--w-keyword"), i + 1 < args.count, let weight = Float(args[i + 1]) {
+            keywordWeight = weight
+            i += 2
+        } else if arg.hasPrefix("--keyword-weight="), let weight = Float(arg.dropFirst("--keyword-weight=".count)) {
+            keywordWeight = weight
+            i += 1
         } else {
             queryTerms.append(args[i])
             i += 1
@@ -460,10 +542,19 @@ case "search":
 
     let query = queryTerms.joined(separator: " ")
     let searchLimit = limit
+    let searchMode = mode
+    let searchVectorWeight = vectorWeight
+    let searchKeywordWeight = keywordWeight
 
     Task {
         do {
-            try await runSearch(query: query, limit: searchLimit)
+            try await runSearch(
+                query: query,
+                limit: searchLimit,
+                mode: searchMode,
+                vectorWeight: searchVectorWeight,
+                keywordWeight: searchKeywordWeight
+            )
             exit(0)
         } catch {
             print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
