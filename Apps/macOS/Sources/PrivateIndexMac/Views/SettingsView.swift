@@ -109,6 +109,31 @@ public struct SettingsView: View {
                 }
             }
 
+            // MARK: - Startup & Power
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Startup & Background")
+                        .font(.headline)
+
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { appState.launchAtLogin },
+                        set: { appState.launchAtLogin = $0 }
+                    ))
+
+                    Text("Keep the menu bar companion running seamlessly on boot without needing the search window open.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+
+                    Toggle("Prevent sleep while indexing", isOn: $appState.preventSleepDuringIndexing)
+
+                    Text("Requests a power assertion (kIOPMAssertionTypePreventUserIdleSystemSleep) during active indexing passes so system sleep does not interrupt neural embedding.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // MARK: - Privacy & Architecture
             Section {
                 VStack(alignment: .leading, spacing: 6) {
@@ -125,7 +150,7 @@ public struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 420)
+        .frame(width: 540, height: 520)
         .confirmationDialog(
             "Rebuild Index?",
             isPresented: $showingRebuildConfirmation,

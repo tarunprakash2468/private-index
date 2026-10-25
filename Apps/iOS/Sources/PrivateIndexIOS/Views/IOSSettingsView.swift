@@ -54,6 +54,28 @@ public struct IOSSettingsView: View {
 
                 // Section: Actions
                 Section("Actions") {
+                    Button {
+                        Task {
+                            await appState.syncAndCheckDatabase()
+                        }
+                    } label: {
+                        HStack {
+                            Text("Sync & Check Database")
+                            if appState.isSyncingDatabase {
+                                Spacer()
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                    .disabled(appState.isSyncingDatabase)
+
+                    if let syncStatus = appState.syncStatusMessage {
+                        Text(syncStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Button("Re-index Documents") {
                         Task {
                             await appState.startIndexing()

@@ -1,5 +1,11 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
+#if canImport(BackgroundTasks)
+import BackgroundTasks
+#endif
 import PrivateIndexEngine
 
 // MARK: - IOSAppState
@@ -42,6 +48,18 @@ public final class IOSAppState {
     public init() {
         setupEngine()
         restoreMonitoredFolder()
+
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.scheduleBackgroundIndexingTask()
+            }
+        }
+        #endif
     }
 
     // MARK: - Engine Setup
@@ -182,5 +200,121 @@ public final class IOSAppState {
 
         setupEngine()
         await startIndexing()
+    }
+
+    // MARK: - Background Processing Tasks
+
+    #if os(iOS)
+    public func scheduleBackgroundIndexingTask() {
+        let request = BGProcessingTaskRequest(identifier: backgroundIndexingTaskId)
+        request.requiresExternalPower = true
+        request.requiresNetworkConnectivity = false
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 mins minimum interval
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            print("Failed to schedule background indexing: \(error.localizedDescription)")
+        }
+    }
+
+    public nonisolated func handleBackgroundIndexing(task: BGProcessingTask) {
+        let indexingTask = Task { @MainActor in
+            // Re-schedule next background indexing task
+            self.scheduleBackgroundIndexingTask()
+
+            // 1. Resolve persistent security-scoped folder bookmark
+            guard let folderURL = IOSContainerManager.shared.restoreMonitoredFolder() else {
+                task.setTaskCompleted(success: true)
+                return
+            }
+
+            // 2. Run incremental index scan for any modified files
+            do {
+                guard let coordinator = self.coordinator else {
+                    task.setTaskCompleted(success: true)
+                    return
+                }
+
+                self.isIndexing = true
+                let report = try await coordinator.index(directoryURL: folderURL)
+                self.lastReport = report
+                self.indexStatusMessage = "Background sync: \(report.filesIndexed) indexed, \(report.filesSkipped) skipped"
+                self.refreshIndexedFiles()
+                self.isIndexing = false
+                task.setTaskCompleted(success: true)
+            } catch {
+                self.isIndexing = false
+                task.setTaskCompleted(success: false)
+            }
+        }
+
+        // 3. Gracefully handle task expiration
+        task.expirationHandler = {
+            indexingTask.cancel()
+            Task { @MainActor in
+                self.isIndexing = false
+                self.indexStatusMessage = "Background indexing paused (time expired)"
+            }
+        }
+    }
+    #endif
+
+    // MARK: - Manual iCloud Database Sync & Check
+
+    public var isSyncingDatabase: Bool = false
+    public var syncStatusMessage: String? = nil
+
+    public func syncAndCheckDatabase() async {
+        isSyncingDatabase = true
+        syncStatusMessage = "Checking iCloud container..."
+
+        let dbURL = IOSContainerManager.shared.databaseURL
+
+        guard FileManager.default.fileExists(atPath: dbURL.path) else {
+            syncStatusMessage = "Database not found in container. Index a folder or allow Mac to sync."
+            isSyncingDatabase = false
+            return
+        }
+
+        // Check if iCloud has a newer dataless version or active download
+        let keys: Set<URLResourceKey> = [
+            .ubiquitousItemDownloadingStatusKey,
+            .ubiquitousItemIsDownloadingKey,
+            .contentModificationDateKey,
+            .fileSizeKey
+        ]
+
+        if let values = try? dbURL.resourceValues(forKeys: keys) {
+            if values.ubiquitousItemDownloadingStatus == .notDownloaded {
+                syncStatusMessage = "Downloading latest index.sqlite from iCloud..."
+                try? FileManager.default.startDownloadingUbiquitousItem(at: dbURL)
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            } else if values.ubiquitousItemIsDownloading == true {
+                syncStatusMessage = "iCloud is currently downloading the latest index.sqlite..."
+            }
+        }
+
+        // Reconnect vector store to pick up any changes synced from Mac
+        setupEngine()
+
+        let count = indexedFiles.count
+        var sizeStr = "0 KB"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
+           let size = attrs[.size] as? Int64 {
+            sizeStr = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        }
+
+        var mtimeStr = "recently"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
+           let mtime = attrs[.modificationDate] as? Date {
+            let df = DateFormatter()
+            df.dateStyle = .short
+            df.timeStyle = .short
+            mtimeStr = df.string(from: mtime)
+        }
+
+        syncStatusMessage = "Database synced! (\(count) files indexed, \(sizeStr), modified: \(mtimeStr))"
+        isSyncingDatabase = false
     }
 }

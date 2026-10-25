@@ -4,6 +4,7 @@ _pi() {
     local -a commands
     commands=(
         'index:Index documents in the specified directory'
+        'watch:Run background watcher daemon for live folder monitoring'
         'search:Run semantic similarity search for a query'
         'stats:Show database stats and indexed document counts'
         'reset:Clear database and purge all vector embeddings'
@@ -23,6 +24,11 @@ _pi() {
             case $words[1] in
                 index)
                     _arguments '1:directory:_directories'
+                    ;;
+                watch)
+                    _arguments \
+                        '--install-launchagent[Install and load launchd LaunchAgent for 24/7 background operation]' \
+                        '1:directory:_directories'
                     ;;
                 search)
                     _arguments \
