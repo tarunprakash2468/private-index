@@ -88,6 +88,7 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
     model_id = "sentence-transformers/all-MiniLM-L6-v2"
     print(f"[1/5] Loading model: {model_id}")
     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    assert tokenizer is not None
     base_model = AutoModel.from_pretrained(model_id)
     base_model.eval()
 
@@ -168,6 +169,7 @@ def verify_model(mlpackage_path: str, max_length: int = 128) -> bool:
     print("\n--- Verification ---")
     print(f"Loading PyTorch reference model: {model_id}")
     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    assert tokenizer is not None
     base_model = AutoModel.from_pretrained(model_id)
     base_model.eval()
     wrapper = SentenceTransformerWrapper(base_model)
