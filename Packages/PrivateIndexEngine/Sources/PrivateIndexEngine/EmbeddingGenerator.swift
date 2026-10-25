@@ -79,12 +79,12 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
         let modelName = "all-MiniLM-L6-v2"
         let fileManager = FileManager.default
 
-        // 1. Check module bundle (SwiftPM resources)
-        if let url = Bundle.module.url(forResource: modelName, withExtension: "mlmodelc"),
+        // 1. Check engine bundle via ResourceLocator
+        if let url = ResourceLocator.url(forResource: modelName, withExtension: "mlmodelc"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }
-        if let url = Bundle.module.url(forResource: modelName, withExtension: "mlpackage"),
+        if let url = ResourceLocator.url(forResource: modelName, withExtension: "mlpackage"),
            let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
             return model
         }

@@ -39,8 +39,8 @@ public final class BertTokenizer: @unchecked Sendable {
 
     /// Initializes the tokenizer using the bundled `vocab.txt` file.
     public convenience init() throws {
-        guard let url = Bundle.module.url(forResource: "vocab", withExtension: "txt") else {
-            throw TokenizerError.vocabFileNotFound("vocab.txt not found in module bundle")
+        guard let url = ResourceLocator.url(forResource: "vocab", withExtension: "txt") else {
+            throw TokenizerError.vocabFileNotFound("vocab.txt not found in resource bundle or search paths")
         }
         try self.init(vocabURL: url)
     }

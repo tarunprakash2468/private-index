@@ -46,6 +46,11 @@ class PrivateIndex < Formula
     bin.install_symlink bin/"pi" => "private-index"
     bin.install_symlink bin/"pi" => "private-index-cli"
 
+    # Resource bundle containing vocab and tokenizer assets
+    if File.directory?("PrivateIndexEngine_PrivateIndexEngine.bundle")
+      bin.install "PrivateIndexEngine_PrivateIndexEngine.bundle"
+    end
+
     # Shell autocompletions
     if File.directory?("completions")
       zsh_completion.install "completions/zsh/_pi" => "_pi"
@@ -62,6 +67,7 @@ class PrivateIndex < Formula
   test do
     assert_match "pi — Private Index", shell_output("#{bin}/pi help")
     assert_match "pi — Private Index", shell_output("#{bin}/private-index help")
+    assert_match "Private Index Database Statistics", shell_output("#{bin}/pi stats")
   end
 end
 EOF

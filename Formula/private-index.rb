@@ -8,12 +8,17 @@ class PrivateIndex < Formula
   depends_on arch: :arm64
 
   url "https://github.com/tarunprakash2468/private-index/releases/download/v#{version}/private-index-cli-#{version}-darwin-arm64.tar.gz"
-  sha256 "8c32def118fa88869ac96baf35f7b3e3fc79b0d05ab03c993c0b62d7ff5f83ce"
+  sha256 "f38ede6b1e0cceb797c46c2f27fd5ae784c62851c66fff34722a12dbd960d6b1"
 
   def install
     bin.install "private-index-cli" => "pi"
     bin.install_symlink bin/"pi" => "private-index"
     bin.install_symlink bin/"pi" => "private-index-cli"
+
+    # Resource bundle containing vocab and tokenizer assets
+    if File.directory?("PrivateIndexEngine_PrivateIndexEngine.bundle")
+      bin.install "PrivateIndexEngine_PrivateIndexEngine.bundle"
+    end
 
     # Shell autocompletions
     if File.directory?("completions")
@@ -31,5 +36,6 @@ class PrivateIndex < Formula
   test do
     assert_match "pi — Private Index", shell_output("#{bin}/pi help")
     assert_match "pi — Private Index", shell_output("#{bin}/private-index help")
+    assert_match "Private Index Database Statistics", shell_output("#{bin}/pi stats")
   end
 end

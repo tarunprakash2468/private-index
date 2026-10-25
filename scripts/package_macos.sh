@@ -52,15 +52,29 @@ ln -sf "private-index-cli" "${CLI_STAGE}/private-index"
 cp "${REPO_ROOT}/LICENSE" "${CLI_STAGE}/LICENSE"
 cp -R "${REPO_ROOT}/completions" "${CLI_STAGE}/completions"
 
+# Copy SwiftPM resource bundle (vocab.txt, etc.) into CLI stage
+BUNDLE_DIR=$(find "${TMP_BUILD}" -type d -name "PrivateIndexEngine_PrivateIndexEngine.bundle" | head -n 1)
+if [[ -n "${BUNDLE_DIR}" && -d "${BUNDLE_DIR}" ]]; then
+    echo "==> Bundling resource bundle ${BUNDLE_DIR} into CLI stage..."
+    cp -R "${BUNDLE_DIR}" "${CLI_STAGE}/PrivateIndexEngine_PrivateIndexEngine.bundle"
+fi
+
 # Bundle compiled Core ML model into CLI stage if present
 MODEL_SOURCE="${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc"
 if [[ -d "${MODEL_SOURCE}" ]]; then
     mkdir -p "${CLI_STAGE}/models"
     cp -R "${MODEL_SOURCE}" "${CLI_STAGE}/models/all-MiniLM-L6-v2.mlmodelc"
-    tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions models
-else
-    tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions
 fi
+
+TAR_ARGS=("pi" "private-index" "private-index-cli" "LICENSE" "completions")
+if [[ -d "${CLI_STAGE}/PrivateIndexEngine_PrivateIndexEngine.bundle" ]]; then
+    TAR_ARGS+=("PrivateIndexEngine_PrivateIndexEngine.bundle")
+fi
+if [[ -d "${CLI_STAGE}/models" ]]; then
+    TAR_ARGS+=("models")
+fi
+
+tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" "${TAR_ARGS[@]}"
 rm -rf "${CLI_STAGE}"
 
 # -----------------------------------------------------------------------------
