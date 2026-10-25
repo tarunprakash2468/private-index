@@ -12,6 +12,10 @@ let package = Package(
             name: "PrivateIndexEngine",
             targets: ["PrivateIndexEngine"]
         ),
+        .executable(
+            name: "private-index-cli",
+            targets: ["private-index-cli"]
+        ),
     ],
     targets: [
         // C target: vendored sqlite-vec amalgamation linked against system libsqlite3
@@ -35,6 +39,12 @@ let package = Package(
             resources: [
                 .process("Resources")
             ]
+        ),
+        // Developer CLI
+        .executableTarget(
+            name: "private-index-cli",
+            dependencies: ["PrivateIndexEngine"],
+            path: "Sources/private-index-cli"
         ),
         // Unit tests
         .testTarget(

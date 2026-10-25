@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (macOS & iOS)
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: |
+          echo "Active Xcode: $(xcode-select -p)"
+          swift --version
+
+      - name: Test PrivateIndexEngine
+        run: |
+          cd Packages/PrivateIndexEngine
+          swift test
+
+      - name: Build Developer CLI (private-index-cli)
+        run: |
+          cd Packages/PrivateIndexEngine
+          swift build --product private-index-cli
+
+      - name: Build macOS Application
+        run: |
+          cd Apps/macOS
+          swift build
+
+      - name: Build iOS Application (Simulator)
+        run: |
+          cd Apps/iOS
+          swift build --triple arm64-apple-ios17.0-simulator
