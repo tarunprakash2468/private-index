@@ -1,5 +1,5 @@
-torch>=2.2.0,<2.5.0
-transformers>=4.38.0,<4.50.0
-coremltools>=7.2,<8.0
-numpy>=1.24.0,<2.0.0
+torch>=2.14.0
+transformers>=5.10.0
+coremltools>=8.0
+numpy>=1.26.0
 sentencepiece>=0.1.99
