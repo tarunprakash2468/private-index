@@ -71,6 +71,63 @@ class SentenceTransformerWrapper(nn.Module):
 # ---------------------------------------------------------------------------
 
 
+def _register_custom_torch_ops():
+    """
+    Register PyTorch frontend converters for ops missing in coremltools.
+    Recent transformers versions (>= 5.x) use tensor.new_ones(()) and tensor.new_zeros(())
+    during attention masking, which either lack a converter or need int32 shape handling in coremltools.
+    """
+    try:
+        from coremltools.converters.mil.frontend.torch.ops import (  # type: ignore
+            _cast_to,
+            _get_inputs,
+            NUM_TO_DTYPE_STRING,
+            register_torch_op,
+        )
+        from coremltools.converters.mil.mil import Builder as mb  # type: ignore
+
+        @register_torch_op(override=True)
+        def new_ones(context, node):
+            inputs = _get_inputs(context, node)
+            shape = inputs[1]
+            dtype = inputs[2] if len(inputs) > 2 and inputs[2] is not None else None
+
+            if isinstance(shape, list):
+                shape = mb.concat(values=shape, axis=0)
+            elif hasattr(shape, "dtype") and shape.dtype != np.int32:
+                if hasattr(shape, "val") and shape.val is not None:
+                    shape = np.array(shape.val, dtype=np.int32)
+                else:
+                    shape = mb.cast(x=shape, dtype="int32")
+
+            res = mb.fill(shape=shape, value=1.0)
+            if dtype is not None and hasattr(dtype, "val") and dtype.val in NUM_TO_DTYPE_STRING:
+                res = _cast_to(res, NUM_TO_DTYPE_STRING[dtype.val], node.name)
+            context.add(res, node.name)
+
+        @register_torch_op(torch_alias=["new_empty"], override=True)
+        def new_zeros(context, node):
+            inputs = _get_inputs(context, node)
+            shape = inputs[1]
+            dtype = inputs[2] if len(inputs) > 2 and inputs[2] is not None else None
+
+            if isinstance(shape, list):
+                shape = mb.concat(values=shape, axis=0)
+            elif hasattr(shape, "dtype") and shape.dtype != np.int32:
+                if hasattr(shape, "val") and shape.val is not None:
+                    shape = np.array(shape.val, dtype=np.int32)
+                else:
+                    shape = mb.cast(x=shape, dtype="int32")
+
+            res = mb.fill(shape=shape, value=0.0)
+            if dtype is not None and hasattr(dtype, "val") and dtype.val in NUM_TO_DTYPE_STRING:
+                res = _cast_to(res, NUM_TO_DTYPE_STRING[dtype.val], node.name)
+            context.add(res, node.name)
+
+    except Exception as e:
+        print(f"Warning: could not register custom torch ops: {e}")
+
+
 def convert_model(output_path: str, max_length: int = 128) -> str:
     """
     Downloads, wraps, traces, and converts the model to Core ML.
@@ -84,6 +141,8 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
     """
     import coremltools as ct
     from transformers import AutoModel, AutoTokenizer
+
+    _register_custom_torch_ops()
 
     model_id = "sentence-transformers/all-MiniLM-L6-v2"
     print(f"[1/5] Loading model: {model_id}")
@@ -143,6 +202,9 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
         vocab_dest = Path(__file__).resolve().parent.parent / "Packages" / "PrivateIndexEngine" / "Sources" / "PrivateIndexEngine" / "Resources" / "vocab.txt"
         vocab_dest.parent.mkdir(parents=True, exist_ok=True)
         tokenizer.save_vocabulary(str(vocab_dest.parent))
+        extra_model = vocab_dest.parent / "tokenizer.model"
+        if extra_model.exists():
+            extra_model.unlink()
         print(f"✅ Vocabulary saved to {vocab_dest}")
     except Exception as e:
         print(f"⚠️ Note: Could not export vocab.txt automatically: {e}")
@@ -164,6 +226,8 @@ def verify_model(mlpackage_path: str, max_length: int = 128) -> bool:
     """
     import coremltools as ct
     from transformers import AutoModel, AutoTokenizer
+
+    _register_custom_torch_ops()
 
     model_id = "sentence-transformers/all-MiniLM-L6-v2"
     print("\n--- Verification ---")
