@@ -58,6 +58,8 @@ pi search "zero-cloud privacy architecture" --limit 5
 pi stats
 ```
 
+*Tab autocompletions for **Zsh**, **Bash**, and **Fish** are automatically configured when installed via Homebrew.*
+
 ---
 
 ## Supported File Formats

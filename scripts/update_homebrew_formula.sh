@@ -45,6 +45,13 @@ class PrivateIndex < Formula
     bin.install "private-index-cli" => "pi"
     bin.install_symlink bin/"pi" => "private-index"
     bin.install_symlink bin/"pi" => "private-index-cli"
+
+    # Shell autocompletions
+    if File.directory?("completions")
+      zsh_completion.install "completions/zsh/_pi" => "_pi"
+      bash_completion.install "completions/bash/pi.bash" => "pi"
+      fish_completion.install "completions/fish/pi.fish" => "pi.fish"
+    end
   end
 
   test do

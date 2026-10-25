@@ -1,0 +1,37 @@
+#compdef pi private-index private-index-cli
+
+_pi() {
+    local -a commands
+    commands=(
+        'index:Index documents in the specified directory'
+        'search:Run semantic similarity search for a query'
+        'stats:Show database stats and indexed document counts'
+        'reset:Clear database and purge all vector embeddings'
+        'help:Display this help message'
+    )
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[Display this help message]' \
+        '1:command:->command' \
+        '*::arg:->args'
+
+    case $state in
+        command)
+            _describe -t commands 'pi command' commands
+            ;;
+        args)
+            case $words[1] in
+                index)
+                    _arguments '1:directory:_directories'
+                    ;;
+                search)
+                    _arguments \
+                        '--limit[Maximum number of results to return]:limit:' \
+                        '*:query:'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_pi "$@"

@@ -50,7 +50,8 @@ chmod +x "${CLI_STAGE}/private-index-cli"
 ln -sf "private-index-cli" "${CLI_STAGE}/pi"
 ln -sf "private-index-cli" "${CLI_STAGE}/private-index"
 cp "${REPO_ROOT}/LICENSE" "${CLI_STAGE}/LICENSE"
-tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE
+cp -R "${REPO_ROOT}/completions" "${CLI_STAGE}/completions"
+tar -czvf "${CLI_TARBALL}" -C "${CLI_STAGE}" pi private-index private-index-cli LICENSE completions
 rm -rf "${CLI_STAGE}"
 
 # -----------------------------------------------------------------------------
