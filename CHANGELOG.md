@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.3.1...private-index-v0.4.0) (2026-10-25)
+
+
+### Features
+
+* **search,daemon:** add vector similarity threshold, confidence percentage display, and launchagent uninstall ([0ac97d3](https://github.com/tarunprakash2468/private-index/commit/0ac97d3194e1a35df05fd3b2096ca51628e4961c))
+
 ## [0.3.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.3.0...private-index-v0.3.1) (2026-10-25)
 
 
