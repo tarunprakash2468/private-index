@@ -272,6 +272,11 @@ def main():
         action="store_true",
         help="Run verification after conversion",
     )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="Compile .mlpackage to .mlmodelc and place in PrivateIndexEngine resources",
+    )
     args = parser.parse_args()
 
     output_path = convert_model(args.output, args.max_length)
@@ -280,6 +285,14 @@ def main():
         success = verify_model(output_path, args.max_length)
         if not success:
             sys.exit(1)
+
+    if args.compile:
+        import subprocess
+        resources_dir = Path(__file__).resolve().parent.parent / "Packages" / "PrivateIndexEngine" / "Sources" / "PrivateIndexEngine" / "Resources"
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n[Compiling] Running coremlc compile {output_path} to {resources_dir}...")
+        subprocess.run(["xcrun", "coremlc", "compile", output_path, str(resources_dir)], check=True)
+        print(f"✅ Successfully compiled model to {resources_dir}/all-MiniLM-L6-v2.mlmodelc")
 
     print("\nDone.")
 

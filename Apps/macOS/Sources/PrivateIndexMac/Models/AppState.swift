@@ -81,14 +81,7 @@ public final class AppState {
                 tokenizer = BertTokenizer(vocab: [:])
             }
 
-            // Look for compiled Core ML model or fallback to MockEmbeddingModel
-            let model: EmbeddingGenerator
-            if let modelURL = Bundle.main.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlmodelc"),
-               let coreML = try? CoreMLEmbeddingModel(modelURL: modelURL, tokenizer: tokenizer) {
-                model = coreML
-            } else {
-                model = MockEmbeddingModel()
-            }
+            let model = CoreMLEmbeddingModel.loadDefaultModel(tokenizer: tokenizer)
 
             self.coordinator = IndexCoordinator(
                 vectorStore: store,

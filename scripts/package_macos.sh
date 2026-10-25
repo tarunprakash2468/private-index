@@ -86,6 +86,11 @@ if [[ -d "${TMP_MAC_BUILD}/arm64-apple-macosx/release/PrivateIndexEngine_Private
     cp -R "${TMP_MAC_BUILD}/arm64-apple-macosx/release/PrivateIndexEngine_PrivateIndexEngine.bundle" "${APP_DIR}/Contents/Resources/"
 fi
 
+# Copy compiled Core ML model into Resources if present
+if [[ -d "${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc" ]]; then
+    cp -R "${REPO_ROOT}/Packages/PrivateIndexEngine/Sources/PrivateIndexEngine/Resources/all-MiniLM-L6-v2.mlmodelc" "${APP_DIR}/Contents/Resources/"
+fi
+
 # Build .dmg disk image with /Applications symlink
 DMG_STAGE="/tmp/dmg-stage"
 rm -rf "${DMG_STAGE}"

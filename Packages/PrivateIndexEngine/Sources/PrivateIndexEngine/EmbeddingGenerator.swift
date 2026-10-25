@@ -74,6 +74,30 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
         self.init(model: model, tokenizer: tokenizer, dimension: dimension, maxSequenceLength: maxSequenceLength)
     }
 
+    /// Loads the bundled Core ML model from Bundle.module or Bundle.main, falling back to mock if unavailable.
+    public static func loadDefaultModel(tokenizer: BertTokenizer) -> EmbeddingGenerator {
+        // 1. Check module bundle (SwiftPM resources)
+        if let url = Bundle.module.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlmodelc"),
+           let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
+            return model
+        }
+        if let url = Bundle.module.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlpackage"),
+           let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
+            return model
+        }
+        // 2. Check main app bundle
+        if let url = Bundle.main.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlmodelc"),
+           let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
+            return model
+        }
+        if let url = Bundle.main.url(forResource: "all-MiniLM-L6-v2", withExtension: "mlpackage"),
+           let model = try? CoreMLEmbeddingModel(modelURL: url, tokenizer: tokenizer) {
+            return model
+        }
+        // 3. Fallback for unit testing and offline development
+        return MockEmbeddingModel()
+    }
+
     public func generateEmbedding(for text: String) async throws -> [Float] {
         let tokenized = tokenizer.tokenize(text, maxLength: maxSequenceLength)
 
