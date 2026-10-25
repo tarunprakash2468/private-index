@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.2...private-index-v0.3.0) (2026-10-25)
+
+
+### Features
+
+* **engine:** implement hybrid search combining SQLite FTS5 BM25 and vector embeddings via RRF ([#7](https://github.com/tarunprakash2468/private-index/issues/7)) ([13978c6](https://github.com/tarunprakash2468/private-index/commit/13978c6d4dce0dcb63c29b1c0d92ef04c4a33283))
+* implement live folder watching and background sync across macOS, iOS, and CLI ([#6](https://github.com/tarunprakash2468/private-index/issues/6)) ([1b3f167](https://github.com/tarunprakash2468/private-index/commit/1b3f1670d330fffc4ab3dc9713f0b840daac7686))
+
+
+### CI/CD & Automation
+
+* **release:** enforce coreml model compilation ([#4](https://github.com/tarunprakash2468/private-index/issues/4)) ([d4daea3](https://github.com/tarunprakash2468/private-index/commit/d4daea38140881beba5614b5df0ce5e95513ab08))
+
 ## [0.2.2](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.2.1...private-index-v0.2.2) (2026-10-25)
 
 
