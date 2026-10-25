@@ -80,7 +80,6 @@ jobs:
 
       - name: Compile & Verify Core ML Embedding Model
         if: steps.cache-model.outputs.cache-hit != 'true'
-        continue-on-error: true
         run: |
           pip install -r scripts/requirements.txt
           python3 scripts/convert_model.py --compile --verify
