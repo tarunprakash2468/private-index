@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.9.0...private-index-v0.10.0) (2026-10-26)
+
+
+### Features
+
+* **ios:** add native PrivateIndex.xcodeproj for one-click Xcode deployment ([447ab9c](https://github.com/tarunprakash2468/private-index/commit/447ab9cb16b75750a4088786b736169a9b300b53))
+
+
+### Bug Fixes
+
+* **cli:** clamp swift-argument-parser to &lt;1.8.0 for Swift 5.10 compatibility ([2cb4afe](https://github.com/tarunprakash2468/private-index/commit/2cb4afef6e1281ea432695d7f19ef74e00df2cfd))
+* **cli:** clamp swift-argument-parser to &lt;1.8.0 for Swift 5.10 toolchain compatibility ([ab701c9](https://github.com/tarunprakash2468/private-index/commit/ab701c955f5259704fd0600e73a0d0c8a3a4a789))
+* **ios:** resolve UIDeviceFamily and AccentColor warnings ([d8e015d](https://github.com/tarunprakash2468/private-index/commit/d8e015d6b1c09b936490fbad8871904f656faa60))
+* **ios:** use $(EXECUTABLE_NAME) for CFBundleExecutable in Info.plist ([481dfb3](https://github.com/tarunprakash2468/private-index/commit/481dfb389b48b6c205e5910064f4e739bd7e180c))
+
 ## [0.9.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.2...private-index-v0.9.0) (2026-10-26)
 
 
