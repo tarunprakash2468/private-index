@@ -7,12 +7,16 @@ on:
       - 'Formula/**'
       - '*.md'
       - 'LICENSE'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
   pull_request:
     branches: [ main ]
     paths-ignore:
       - 'Formula/**'
       - '*.md'
       - 'LICENSE'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
 
 jobs:
   build-and-test:
