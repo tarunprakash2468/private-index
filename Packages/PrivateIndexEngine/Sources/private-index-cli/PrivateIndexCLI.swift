@@ -24,7 +24,7 @@ struct PrivateIndexCLI: AsyncParsableCommand {
             Darwin.exit(0)
         }
         do {
-            var command = try await asyncParseAsRoot()
+            var command = try parseAsRoot()
             if var asyncCommand = command as? AsyncParsableCommand {
                 try await asyncCommand.run()
             } else {
