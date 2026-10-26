@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.1...private-index-v0.8.2) (2026-10-26)
+
+
+### Documentation
+
+* add dedicated Raycast extension README and link in quick start ([2f94948](https://github.com/tarunprakash2468/private-index/commit/2f94948ddb505b5a4e1701f7ae6392eb9669a6aa))
+* update README with multi-cloud watch, OCR formats, and install guides ([3bc0476](https://github.com/tarunprakash2468/private-index/commit/3bc047653cf43253a555a9eca4c1a213a36d7c6b))
+
 ## [0.8.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.0...private-index-v0.8.1) (2026-10-26)
 
 
