@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.6.0...private-index-v0.7.0) (2026-10-26)
+
+
+### Features
+
+* **cli,raycast:** add --json output flag and native Raycast extension ([ef93f82](https://github.com/tarunprakash2468/private-index/commit/ef93f8242d0d2798e868ef5d4b1d7a9e3b440f0f))
+* **cli,raycast:** add --json output flag and native Raycast extension ([fcade7e](https://github.com/tarunprakash2468/private-index/commit/fcade7e2bde9601185ace223f4c1f1d5ccacb1d9))
+* **engine:** add on-device image and screenshot OCR using Apple Vision ([8206be6](https://github.com/tarunprakash2468/private-index/commit/8206be64232b4d34d8433dc46ff69d7e71503d34))
+* **engine:** add on-device image and screenshot OCR using Apple Vision ([8ae09fb](https://github.com/tarunprakash2468/private-index/commit/8ae09fb7db03438f8e34688a670390f412459bf3))
+
 ## [0.6.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.5.0...private-index-v0.6.0) (2026-10-26)
 
 
