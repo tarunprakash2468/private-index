@@ -4,16 +4,16 @@
 # to an Apple Neural Engine (ANE) optimized Core ML .mlpackage and .mlmodelc bundle.
 
 # PyTorch: Required for model definition, weights loading, and JIT tracing
-torch>=2.14.0
+torch>=2.14.1
 
 # Hugging Face Transformers: Required for downloading all-MiniLM-L6-v2 and tokenization
-transformers>=5.10.0
+transformers>=5.20.2
 
 # Apple Core ML Tools: Required for PyTorch-to-MIL conversion and mlprogram generation
-coremltools>=8.0
+coremltools>=9.0
 
 # NumPy: Pinned to <2.0.0 due to coremltools C-API extension compatibility
-numpy>=1.26.0,<2.0.0
+numpy>=2.5.4,<3.0.0
 
 # SentencePiece: Required by Hugging Face tokenizers for subword vocabulary handling
-sentencepiece>=0.1.99
+sentencepiece>=0.2.2
