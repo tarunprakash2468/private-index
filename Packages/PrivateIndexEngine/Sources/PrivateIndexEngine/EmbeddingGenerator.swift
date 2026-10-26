@@ -33,6 +33,12 @@ extension EmbeddingGenerator {
 // MARK: - CoreMLEmbeddingModel
 
 /// Executes on-device inference using an ANE-optimized Core ML `.mlpackage` / `.mlmodelc`.
+///
+/// Thread Safety: `CoreMLEmbeddingModel` is `@unchecked Sendable` because `MLModel` from Apple's
+/// CoreML framework does not explicitly adopt `Sendable` in system headers, but Apple documents
+/// that `MLModel` prediction is thread-safe for concurrent evaluations across threads. All stored
+/// properties (`model`, `tokenizer`, `embeddingDimension`, `maxSequenceLength`) are immutable `let`,
+/// and tokenization/tensor extraction uses purely local non-shared state.
 public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable {
     public let embeddingDimension: Int
     public let maxSequenceLength: Int
@@ -216,7 +222,7 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
 /// Deterministic, zero-weight embedding generator for fast unit testing and offline development.
 ///
 /// Produces normalized 384-dimensional vectors deterministically computed from the input text's hash.
-public final class MockEmbeddingModel: EmbeddingGenerator, @unchecked Sendable {
+public final class MockEmbeddingModel: EmbeddingGenerator, Sendable {
     public let embeddingDimension: Int
     public let maxSequenceLength: Int
 

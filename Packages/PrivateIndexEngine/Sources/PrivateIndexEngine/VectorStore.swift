@@ -12,7 +12,7 @@ private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.sel
 ///
 /// Thread Safety: This type is **not** thread-safe. Access from a single serial queue
 /// or use external synchronization.
-public final class VectorStore {
+public final class VectorStore: @unchecked Sendable {
 
     // MARK: - Types
 
