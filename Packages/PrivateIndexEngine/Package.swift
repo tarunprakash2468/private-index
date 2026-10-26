@@ -39,19 +39,28 @@ let package = Package(
             path: "Sources/PrivateIndexEngine",
             resources: [
                 .process("Resources/vocab.txt")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         // Developer CLI
         .executableTarget(
             name: "private-index-cli",
             dependencies: ["PrivateIndexEngine"],
-            path: "Sources/private-index-cli"
+            path: "Sources/private-index-cli",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
         // Unit tests
         .testTarget(
             name: "PrivateIndexEngineTests",
             dependencies: ["PrivateIndexEngine"],
-            path: "Tests/PrivateIndexEngineTests"
+            path: "Tests/PrivateIndexEngineTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
     ]
 )

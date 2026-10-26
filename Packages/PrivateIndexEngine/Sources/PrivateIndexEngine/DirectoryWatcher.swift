@@ -26,19 +26,53 @@ public final class DirectoryWatcher: @unchecked Sendable {
     #endif
 
     private let queue = DispatchQueue(label: "com.privateindex.directorywatcher", qos: .utility)
+    private let queueKey = DispatchSpecificKey<Void>()
     private var debounceTimer: DispatchSourceTimer?
     private let debounceInterval: TimeInterval
     private let onChange: ChangeHandler?
     private let onPathsChanged: DetailedChangeHandler?
 
-    public private(set) var watchedURLs: [URL] = []
-    public var watchedURL: URL? { watchedURLs.first }
-    public private(set) var isWatching: Bool = false
-    public private(set) var lastEventId: UInt64 = 0
-    public var needsFullRescan: Bool = false
-
-    private var accumulatedPaths = Set<String>()
+    private var _watchedURLs: [URL] = []
+    private var _isWatching: Bool = false
+    private var _lastEventId: UInt64 = 0
+    private var _needsFullRescan: Bool = false
+    private var _accumulatedPaths = Set<String>()
     private let lock = NSLock()
+
+    public var watchedURLs: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _watchedURLs
+    }
+
+    public var watchedURL: URL? {
+        watchedURLs.first
+    }
+
+    public var isWatching: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isWatching
+    }
+
+    public var lastEventId: UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return _lastEventId
+    }
+
+    public var needsFullRescan: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _needsFullRescan
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _needsFullRescan = newValue
+        }
+    }
 
     public init(
         debounceInterval: TimeInterval = 2.0,
@@ -48,6 +82,7 @@ public final class DirectoryWatcher: @unchecked Sendable {
         self.debounceInterval = debounceInterval
         self.onPathsChanged = onPathsChanged
         self.onChange = onChange
+        queue.setSpecific(key: queueKey, value: ())
     }
 
     public convenience init(
@@ -65,8 +100,6 @@ public final class DirectoryWatcher: @unchecked Sendable {
     public func start(watching directoryURLs: [URL]) {
         stop()
         guard !directoryURLs.isEmpty else { return }
-        self.watchedURLs = directoryURLs
-        self.isWatching = true
 
         #if os(macOS)
         let pathsToWatch = directoryURLs.map { $0.path } as CFArray
@@ -117,12 +150,11 @@ public final class DirectoryWatcher: @unchecked Sendable {
             return
         }
 
-        self.stream = eventStream
         FSEventStreamSetDispatchQueue(eventStream, queue)
         FSEventStreamStart(eventStream)
 
         #if canImport(AppKit)
-        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: nil
@@ -130,6 +162,20 @@ public final class DirectoryWatcher: @unchecked Sendable {
             self?.handleSystemWake()
         }
         #endif
+
+        lock.lock()
+        self._watchedURLs = directoryURLs
+        self._isWatching = true
+        self.stream = eventStream
+        #if canImport(AppKit)
+        self.wakeObserver = observer
+        #endif
+        lock.unlock()
+        #else
+        lock.lock()
+        self._watchedURLs = directoryURLs
+        self._isWatching = true
+        lock.unlock()
         #endif
     }
 
@@ -138,29 +184,33 @@ public final class DirectoryWatcher: @unchecked Sendable {
         start(watching: [directoryURL])
     }
 
-    /// Stops monitoring and cancels all active timers.
+    /// Stops monitoring and cancels all active timers without blocking or deadlock risk.
     public func stop() {
         lock.lock()
-        isWatching = false
-        accumulatedPaths.removeAll()
-        self.watchedURLs.removeAll()
+        _isWatching = false
+        _accumulatedPaths.removeAll()
+        _watchedURLs.removeAll()
+        let timer = debounceTimer
+        debounceTimer = nil
+        #if os(macOS)
+        let eventStream = stream
+        stream = nil
+        let observer = wakeObserver
+        wakeObserver = nil
+        #endif
         lock.unlock()
 
-        queue.sync { [weak self] in
-            self?.cancelDebounceTimer()
-        }
+        timer?.cancel()
 
         #if os(macOS)
-        if let eventStream = stream {
+        if let eventStream = eventStream {
             FSEventStreamStop(eventStream)
             FSEventStreamInvalidate(eventStream)
             FSEventStreamRelease(eventStream)
-            self.stream = nil
         }
         #if canImport(AppKit)
-        if let observer = wakeObserver {
+        if let observer = observer {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
-            self.wakeObserver = nil
         }
         #endif
         #endif
@@ -168,10 +218,15 @@ public final class DirectoryWatcher: @unchecked Sendable {
 
     /// Flushes any pending changes immediately.
     public func flush() {
-        queue.sync { [weak self] in
-            guard let self = self else { return }
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
             self.cancelDebounceTimer()
             self.fireChangeNotification()
+        } else {
+            queue.sync { [weak self] in
+                guard let self = self else { return }
+                self.cancelDebounceTimer()
+                self.fireChangeNotification()
+            }
         }
     }
 
@@ -186,16 +241,16 @@ public final class DirectoryWatcher: @unchecked Sendable {
             guard let self = self else { return }
 
             self.lock.lock()
-            guard self.isWatching else {
+            guard self._isWatching else {
                 self.lock.unlock()
                 return
             }
 
             for path in paths {
-                self.accumulatedPaths.insert(path)
+                self._accumulatedPaths.insert(path)
             }
-            if let maxId = eventIds.max(), maxId > self.lastEventId {
-                self.lastEventId = maxId
+            if let maxId = eventIds.max(), maxId > self._lastEventId {
+                self._lastEventId = maxId
             }
             #if os(macOS)
             for flag in eventFlags {
@@ -203,7 +258,7 @@ public final class DirectoryWatcher: @unchecked Sendable {
                 let userDropped = (flag & UInt32(kFSEventStreamEventFlagUserDropped)) != 0
                 let kernelDropped = (flag & UInt32(kFSEventStreamEventFlagKernelDropped)) != 0
                 if mustScan || userDropped || kernelDropped {
-                    self.needsFullRescan = true
+                    self._needsFullRescan = true
                 }
             }
             #endif
@@ -216,12 +271,16 @@ public final class DirectoryWatcher: @unchecked Sendable {
     #if os(macOS)
     @objc private func handleSystemWake() {
         queue.async { [weak self] in
-            guard let self = self, let stream = self.stream else { return }
-            // Flush any batched FSEvent IDs that accumulated during sleep/wake
-            FSEventStreamFlushAsync(stream)
+            guard let self = self else { return }
             self.lock.lock()
-            self.needsFullRescan = true
+            guard self._isWatching, let stream = self.stream else {
+                self.lock.unlock()
+                return
+            }
+            self._needsFullRescan = true
             self.lock.unlock()
+
+            FSEventStreamFlushAsync(stream)
             self.scheduleDebouncedNotification()
         }
     }
@@ -231,12 +290,12 @@ public final class DirectoryWatcher: @unchecked Sendable {
 
     private func scheduleDebouncedNotification() {
         cancelDebounceTimer()
+
         lock.lock()
-        guard isWatching else {
+        guard _isWatching else {
             lock.unlock()
             return
         }
-        lock.unlock()
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + debounceInterval)
@@ -244,18 +303,20 @@ public final class DirectoryWatcher: @unchecked Sendable {
             guard let self = self else { return }
             self.fireChangeNotification()
         }
-        timer.resume()
         self.debounceTimer = timer
+        lock.unlock()
+
+        timer.resume()
     }
 
     private func fireChangeNotification() {
         lock.lock()
-        guard isWatching else {
+        guard _isWatching else {
             lock.unlock()
             return
         }
-        let paths = Array(accumulatedPaths)
-        accumulatedPaths.removeAll()
+        let paths = Array(_accumulatedPaths)
+        _accumulatedPaths.removeAll()
         lock.unlock()
 
         onPathsChanged?(paths)
@@ -263,7 +324,10 @@ public final class DirectoryWatcher: @unchecked Sendable {
     }
 
     private func cancelDebounceTimer() {
-        debounceTimer?.cancel()
+        lock.lock()
+        let timer = debounceTimer
         debounceTimer = nil
+        lock.unlock()
+        timer?.cancel()
     }
 }
