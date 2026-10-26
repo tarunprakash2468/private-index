@@ -7,4 +7,5 @@ import Foundation
 ///
 /// `IndexDatabase` is unified with `VectorStore` to provide single-connection access
 /// to document chunking, dense vector representations, and inverted keyword indexes.
+@available(*, deprecated, renamed: "VectorStore", message: "Use VectorStore directly.")
 public typealias IndexDatabase = VectorStore

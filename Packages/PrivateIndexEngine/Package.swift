@@ -17,6 +17,9 @@ let package = Package(
             targets: ["private-index-cli"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+    ],
     targets: [
         // C target: vendored sqlite-vec amalgamation linked against system libsqlite3
         .target(
@@ -26,6 +29,7 @@ let package = Package(
             cSettings: [
                 // Compile as a built-in extension (uses sqlite3.h, not sqlite3ext.h)
                 .define("SQLITE_CORE"),
+                .unsafeFlags(["-Wno-shorten-64-to-32", "-Wno-unused-function"]),
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
@@ -38,19 +42,31 @@ let package = Package(
             path: "Sources/PrivateIndexEngine",
             resources: [
                 .process("Resources/vocab.txt")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         // Developer CLI
         .executableTarget(
             name: "private-index-cli",
-            dependencies: ["PrivateIndexEngine"],
-            path: "Sources/private-index-cli"
+            dependencies: [
+                "PrivateIndexEngine",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/private-index-cli",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
         // Unit tests
         .testTarget(
             name: "PrivateIndexEngineTests",
             dependencies: ["PrivateIndexEngine"],
-            path: "Tests/PrivateIndexEngineTests"
+            path: "Tests/PrivateIndexEngineTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
     ]
 )

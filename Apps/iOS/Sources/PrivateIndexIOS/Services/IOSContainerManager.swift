@@ -1,4 +1,5 @@
 import Foundation
+import PrivateIndexEngine
 
 // MARK: - IOSContainerManager
 
@@ -8,7 +9,7 @@ public final class IOSContainerManager: @unchecked Sendable {
 
     public static let shared = IOSContainerManager()
 
-    public static let ubiquityContainerIdentifier = "iCloud.com.app.privateindex"
+    public static let ubiquityContainerIdentifier = iCloudContainerManager.ubiquityContainerIdentifier
     private let bookmarkStorageKey = "com.privateindex.ios.monitoredFolderBookmark"
 
     private var activeSecurityScopedURL: URL?
@@ -19,25 +20,21 @@ public final class IOSContainerManager: @unchecked Sendable {
         stopAccessingSecurityScopedResource()
     }
 
-    // MARK: - Ubiquity Container & Database
+    // MARK: - Ubiquity Container & Database Delegation
 
     /// Resolves the app container (iCloud ubiquity container or sandboxed local documents directory).
     public var containerURL: URL {
-        if let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: Self.ubiquityContainerIdentifier) {
-            return ubiquityURL
-        }
-        // Fallback for Simulator or devices without iCloud active
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let appContainer = documents.appendingPathComponent("PrivateIndexContainer", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appContainer, withIntermediateDirectories: true)
-        return appContainer
+        iCloudContainerManager.shared.containerURL
     }
 
     /// The isolated database path, strictly separated from user documents.
     public var databaseURL: URL {
-        let dbDir = containerURL.appendingPathComponent("Database", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
-        return dbDir.appendingPathComponent("index.sqlite")
+        iCloudContainerManager.shared.databaseURL
+    }
+
+    /// Validates that the selected folder doesn't encompass the database file to prevent indexing loops.
+    public func validateTargetFolder(_ folderURL: URL) throws {
+        try iCloudContainerManager.shared.validateTargetFolder(folderURL)
     }
 
     // MARK: - Security-Scoped Bookmarks
@@ -52,19 +49,11 @@ public final class IOSContainerManager: @unchecked Sendable {
 
         self.activeSecurityScopedURL = url
 
-        #if os(iOS)
         let bookmarkData = try url.bookmarkData(
             options: .minimalBookmark,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        #else
-        let bookmarkData = try url.bookmarkData(
-            options: .withSecurityScope,
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
-        #endif
 
         UserDefaults.standard.set(bookmarkData, forKey: bookmarkStorageKey)
     }
@@ -77,21 +66,12 @@ public final class IOSContainerManager: @unchecked Sendable {
 
         var isStale = false
         do {
-            #if os(iOS)
             let resolvedURL = try URL(
                 resolvingBookmarkData: bookmarkData,
                 options: .withoutUI,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
-            #else
-            let resolvedURL = try URL(
-                resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            #endif
 
             if resolvedURL.startAccessingSecurityScopedResource() {
                 self.activeSecurityScopedURL = resolvedURL
@@ -115,29 +95,16 @@ public final class IOSContainerManager: @unchecked Sendable {
         }
     }
 
-    // MARK: - Loop Prevention
+    // MARK: - Errors
 
     public enum BookmarkError: Error, LocalizedError {
         case accessDenied
-        case databaseContainedWithinTargetFolder(String)
 
         public var errorDescription: String? {
             switch self {
             case .accessDenied:
                 return "Permission to access the selected folder was denied by iOS."
-            case .databaseContainedWithinTargetFolder(let path):
-                return "The folder '\(path)' contains the internal database. Please select a documents folder."
             }
-        }
-    }
-
-    /// Validates that the selected folder doesn't encompass the database file to prevent indexing loops.
-    public func validateTargetFolder(_ folderURL: URL) throws {
-        let standardizedFolder = folderURL.standardizedFileURL.path
-        let standardizedDB = databaseURL.standardizedFileURL.path
-
-        if standardizedDB.hasPrefix(standardizedFolder) {
-            throw BookmarkError.databaseContainedWithinTargetFolder(folderURL.path)
         }
     }
 }

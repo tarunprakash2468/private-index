@@ -33,6 +33,12 @@ extension EmbeddingGenerator {
 // MARK: - CoreMLEmbeddingModel
 
 /// Executes on-device inference using an ANE-optimized Core ML `.mlpackage` / `.mlmodelc`.
+///
+/// Thread Safety: `CoreMLEmbeddingModel` is `@unchecked Sendable` because `MLModel` from Apple's
+/// CoreML framework does not explicitly adopt `Sendable` in system headers, but Apple documents
+/// that `MLModel` prediction is thread-safe for concurrent evaluations across threads. All stored
+/// properties (`model`, `tokenizer`, `embeddingDimension`, `maxSequenceLength`) are immutable `let`,
+/// and tokenization/tensor extraction uses purely local non-shared state.
 public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable {
     public let embeddingDimension: Int
     public let maxSequenceLength: Int
@@ -162,7 +168,7 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
 
     private func createMultiArray(from values: [Int32], shape: [NSNumber]) throws -> MLMultiArray {
         let array = try MLMultiArray(shape: shape, dataType: .int32)
-        let ptr = array.dataPointer.bindMemory(to: Int32.self, capacity: values.count)
+        let ptr = array.dataPointer.assumingMemoryBound(to: Int32.self)
         for (i, val) in values.enumerated() {
             ptr[i] = val
         }
@@ -176,18 +182,18 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
 
         switch multiArray.dataType {
         case .float32:
-            let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
+            let ptr = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
             for i in 0..<count {
                 result[i] = ptr[i]
             }
         case .float16:
-            let ptr = multiArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            let ptr = multiArray.dataPointer.assumingMemoryBound(to: UInt16.self)
             for i in 0..<count {
                 let float16Val = Float16(bitPattern: ptr[i])
                 result[i] = Float(float16Val)
             }
         case .double:
-            let ptr = multiArray.dataPointer.bindMemory(to: Double.self, capacity: totalCount)
+            let ptr = multiArray.dataPointer.assumingMemoryBound(to: Double.self)
             for i in 0..<count {
                 result[i] = Float(ptr[i])
             }
@@ -216,7 +222,7 @@ public final class CoreMLEmbeddingModel: EmbeddingGenerator, @unchecked Sendable
 /// Deterministic, zero-weight embedding generator for fast unit testing and offline development.
 ///
 /// Produces normalized 384-dimensional vectors deterministically computed from the input text's hash.
-public final class MockEmbeddingModel: EmbeddingGenerator, @unchecked Sendable {
+public final class MockEmbeddingModel: EmbeddingGenerator, Sendable {
     public let embeddingDimension: Int
     public let maxSequenceLength: Int
 

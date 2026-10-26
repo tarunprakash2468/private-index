@@ -19,7 +19,7 @@ public struct TokenizedInput: Sendable, Equatable {
 
 /// A pure-Swift BERT WordPiece tokenizer matching the vocabulary and tokenization scheme
 /// of `sentence-transformers/all-MiniLM-L6-v2`.
-public final class BertTokenizer: @unchecked Sendable {
+public final class BertTokenizer: Sendable {
 
     // MARK: - Special Tokens
     public static let padToken = "[PAD]"
@@ -204,7 +204,6 @@ public final class BertTokenizer: @unchecked Sendable {
 
         while start < chars.count {
             var end = chars.count
-            var curSubword: String? = nil
             var curID: Int32? = nil
 
             while start < end {
@@ -214,16 +213,13 @@ public final class BertTokenizer: @unchecked Sendable {
                 }
 
                 if let id = vocab[substring] {
-                    curSubword = substring
                     curID = id
                     break
                 }
                 end -= 1
             }
 
-            if curSubword == nil, let id = curID {
-                subwords.append(id)
-            } else if let id = curID {
+            if let id = curID {
                 subwords.append(id)
                 start = end
             } else {

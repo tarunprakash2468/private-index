@@ -67,25 +67,9 @@ public final class IOSAppState {
     private func setupEngine() {
         do {
             let dbURL = IOSContainerManager.shared.databaseURL
-            let store = try VectorStore(at: dbURL)
-            try store.createSchema()
-            self.vectorStore = store
-
-            let tokenizer: BertTokenizer
-            if let t = try? BertTokenizer() {
-                tokenizer = t
-            } else {
-                tokenizer = BertTokenizer(vocab: [:])
-            }
-
-            let model = CoreMLEmbeddingModel.loadDefaultModel(tokenizer: tokenizer)
-
-            self.coordinator = IndexCoordinator(
-                vectorStore: store,
-                fileCrawler: FileCrawler(),
-                textChunker: TextChunker(windowSize: 500, overlap: 100),
-                embeddingModel: model
-            )
+            let instance = try EngineFactory.create(databaseURL: dbURL)
+            self.vectorStore = instance.store
+            self.coordinator = instance.coordinator
 
             refreshIndexedFiles()
         } catch {

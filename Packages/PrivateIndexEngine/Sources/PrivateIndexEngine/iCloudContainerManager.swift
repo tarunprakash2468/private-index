@@ -7,7 +7,7 @@ import Foundation
 /// Ensures the SQLite database (`index.sqlite`) resides in the app's private ubiquity container
 /// (`iCloud.com.app.privateindex`) or sandboxed Application Support directory, strictly isolated
 /// from the user-facing iCloud Drive documents folder (`~/Library/Mobile Documents/com~apple~CloudDocs/`).
-public final class iCloudContainerManager: @unchecked Sendable {
+public final class iCloudContainerManager: Sendable {
 
     public static let shared = iCloudContainerManager()
 
@@ -31,8 +31,13 @@ public final class iCloudContainerManager: @unchecked Sendable {
             return ubiquityURL
         }
         // Fallback for development, simulator, or machines without iCloud logged in
+        #if os(macOS)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let localContainer = appSupport.appendingPathComponent("PrivateIndex", isDirectory: true)
+        #else
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let localContainer = documents.appendingPathComponent("PrivateIndexContainer", isDirectory: true)
+        #endif
         try? FileManager.default.createDirectory(at: localContainer, withIntermediateDirectories: true)
         return localContainer
     }

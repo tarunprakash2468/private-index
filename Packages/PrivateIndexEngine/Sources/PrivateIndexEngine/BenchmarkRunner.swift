@@ -200,7 +200,7 @@ public struct BenchmarkMetrics: Codable, Sendable, Equatable {
 // MARK: - BenchmarkRunner
 
 /// Executes non-destructive, in-memory performance benchmarks across all core Private Index subsystems.
-public final class BenchmarkRunner: @unchecked Sendable {
+public final class BenchmarkRunner: Sendable {
 
     /// Number of synthetic vectors to insert and evaluate in Stage 3.
     public let vectorCount: Int
