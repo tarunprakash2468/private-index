@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.2...private-index-v0.9.0) (2026-10-26)
+
+
+### Features
+
+* **cli:** adopt swift-argument-parser for structured command line interface ([85e55b1](https://github.com/tarunprakash2468/private-index/commit/85e55b14a0bcee8539ede64332e77dec83873c12))
+
+
+### Refactoring
+
+* **cleanup:** eliminate dead tokenizer branch, remove macOS service shims, and fix iOS platform target ([c18f2ea](https://github.com/tarunprakash2468/private-index/commit/c18f2ea0c3e16c1f4534351c8522d0b28f2c1834))
+* **cli:** decompose monolithic main.swift into modular subcommand handlers and services ([c41e998](https://github.com/tarunprakash2468/private-index/commit/c41e998f2db2821b282a3d318c75d91a5b1ed00d))
+* **concurrency:** audit Sendable conformances and resolve concurrency warnings under complete checking ([c3034d8](https://github.com/tarunprakash2468/private-index/commit/c3034d8259dff4d09be31c36394e59d39b8042e0))
+* **core:** unify engine bootstrap factory and consolidate iCloud container isolation ([c61c95c](https://github.com/tarunprakash2468/private-index/commit/c61c95ce3a37053fbf91b28967f1d0b5c5f41b49))
+* **engine:** add transaction helper, modernize MLMultiArray pointers, and optimize TextChunker slicing ([557deb7](https://github.com/tarunprakash2468/private-index/commit/557deb71c67a9170a9a959d01bcfbef1d5cdbc41))
+* modernize and refactor codebase across engine, CLI, and apps ([6dba9f7](https://github.com/tarunprakash2468/private-index/commit/6dba9f7025defc04c88fc3e55e2db8550963b813))
+
 ## [0.8.2](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.1...private-index-v0.8.2) (2026-10-26)
 
 
