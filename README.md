@@ -178,6 +178,19 @@ cd Packages/PrivateIndexEngine
 swift run private-index-cli help
 ```
 
+### Option 4: Raycast Extension
+
+Install and develop the native Raycast extension locally:
+
+```bash
+cd extensions/raycast-private-index
+npm install
+npm run build
+npm run dev
+```
+
+*See the [Raycast Extension Guide](extensions/raycast-private-index/README.md) for custom preferences (executable path, similarity threshold, result limits).*
+
 ---
 
 ## Uninstallation
