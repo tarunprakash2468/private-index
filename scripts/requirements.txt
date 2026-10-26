@@ -1,5 +1,19 @@
+# Core ML Conversion & Verification Toolchain Dependencies
+# ========================================================
+# Required for scripts/convert_model.py to export sentence-transformers/all-MiniLM-L6-v2
+# to an Apple Neural Engine (ANE) optimized Core ML .mlpackage and .mlmodelc bundle.
+
+# PyTorch: Required for model definition, weights loading, and JIT tracing
 torch>=2.14.0
+
+# Hugging Face Transformers: Required for downloading all-MiniLM-L6-v2 and tokenization
 transformers>=5.10.0
+
+# Apple Core ML Tools: Required for PyTorch-to-MIL conversion and mlprogram generation
 coremltools>=8.0
+
+# NumPy: Pinned to <2.0.0 due to coremltools C-API extension compatibility
 numpy>=1.26.0,<2.0.0
+
+# SentencePiece: Required by Hugging Face tokenizers for subword vocabulary handling
 sentencepiece>=0.1.99
