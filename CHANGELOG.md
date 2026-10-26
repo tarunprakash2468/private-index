@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.1...private-index-v0.8.2) (2026-10-26)
+
+
+### Documentation
+
+* update README with multi-cloud watch, OCR formats, and add Raycast extension guide ([#30](https://github.com/tarunprakash2468/private-index/issues/30)) ([751014e](https://github.com/tarunprakash2468/private-index/commit/751014e8492b30d9df9ffc6076afe997c2c11ca2))
+
 ## [0.8.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.0...private-index-v0.8.1) (2026-10-26)
 
 
