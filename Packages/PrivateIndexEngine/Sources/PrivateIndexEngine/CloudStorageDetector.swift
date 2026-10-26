@@ -57,13 +57,23 @@ public struct CloudStorageDetector: Sendable {
         var locations: [DiscoveredLocation] = []
         var seenCanonicalPaths = Set<String>()
 
-        // 1. Home directory
+        // 1. Home directory / App Documents
+        #if os(macOS)
         if includeHome {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let canonical = home.resolvingSymlinksInPath().standardizedFileURL.path
             locations.append(DiscoveredLocation(name: "Home (~/)", url: home, isCloud: false))
             seenCanonicalPaths.insert(canonical)
         }
+        #else
+        if includeHome {
+            if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let canonical = docs.resolvingSymlinksInPath().standardizedFileURL.path
+                locations.append(DiscoveredLocation(name: "Documents", url: docs, isCloud: false))
+                seenCanonicalPaths.insert(canonical)
+            }
+        }
+        #endif
 
         // 2. iCloud Drive documents
         let iCloudDocs = iCloudContainerManager.defaultUserDocumentsURL

@@ -257,7 +257,11 @@ final class FolderWatchingAndIsolationTests: XCTestCase {
     }
 
     func testCloudDownloadManagerDiskSpaceCheck() throws {
+        #if os(macOS)
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
+        #else
+        let homeURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory())
+        #endif
 
         // Small file (1 KB) with standard 10GB buffer should pass if machine has ample space
         let passes = CloudDownloadManager.hasSufficientDiskSpace(forFileSize: 1024, at: homeURL, minBufferBytes: 1024)
@@ -269,10 +273,12 @@ final class FolderWatchingAndIsolationTests: XCTestCase {
     }
 
     func testHomeDirectoryExemptionFromIsolation() throws {
+        #if os(macOS)
         let manager = iCloudContainerManager.shared
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
 
         // Home directory should be exempted from loop prevention
         XCTAssertNoThrow(try manager.validateTargetFolder(homeURL))
+        #endif
     }
 }
