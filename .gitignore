@@ -39,6 +39,7 @@ build/
 
 # === IDE ===
 .idea/
+.swiftpm/
 *.swp
 *.swo
 *~

@@ -7,13 +7,13 @@ let package = Package(
         .iOS(.v17),
     ],
     products: [
-        .library(name: "PrivateIndexIOS", targets: ["PrivateIndexIOS"])
+        .executable(name: "PrivateIndexIOS", targets: ["PrivateIndexIOS"]),
     ],
     dependencies: [
         .package(path: "../../Packages/PrivateIndexEngine")
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "PrivateIndexIOS",
             dependencies: [
                 .product(name: "PrivateIndexEngine", package: "PrivateIndexEngine")
