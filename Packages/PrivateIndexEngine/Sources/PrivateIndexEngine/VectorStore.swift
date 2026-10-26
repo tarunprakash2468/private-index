@@ -268,8 +268,7 @@ public final class VectorStore {
 
     /// Deletes a file and all its associated text chunks, vector embeddings, and FTS entries.
     public func deleteFile(id: Int64) throws {
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withTransaction {
             // Delete corresponding vector embeddings
             let delVecSQL = "DELETE FROM vec_chunks WHERE chunk_id IN (SELECT id FROM text_chunks WHERE file_id = ?);"
             var vecStmt: OpaquePointer?
@@ -313,26 +312,16 @@ public final class VectorStore {
                 throw StoreError.sqlError("indexed_files deletion failed: \(lastErrorMessage())")
             }
             sqlite3_finalize(fileStmt)
-
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
     /// Clears and purges all indexed files, text chunks, vector embeddings, and FTS entries.
     public func reset() throws {
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withTransaction {
             try execute("DELETE FROM documents_fts;")
             try execute("DELETE FROM vec_chunks;")
             try execute("DELETE FROM text_chunks;")
             try execute("DELETE FROM indexed_files;")
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
@@ -368,9 +357,7 @@ public final class VectorStore {
             "Embedding must have \(Self.embeddingDimension) dimensions, got \(embedding.count)"
         )
 
-        try execute("BEGIN TRANSACTION;")
-
-        do {
+        return try withTransaction {
             // Insert into text_chunks
             let chunkSQL = """
                 INSERT INTO text_chunks (file_id, chunk_index, content) VALUES (?, ?, ?);
@@ -415,11 +402,7 @@ public final class VectorStore {
                 throw StoreError.sqlError("vec_chunks insert: \(lastErrorMessage())")
             }
 
-            try execute("COMMIT;")
             return chunkId
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
@@ -597,6 +580,18 @@ public final class VectorStore {
     }
 
     // MARK: - Internal Helpers
+
+    internal func withTransaction<T>(_ block: () throws -> T) throws -> T {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            let result = try block()
+            try execute("COMMIT;")
+            return result
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
 
     internal func execute(_ sql: String) throws {
         var errMsg: UnsafeMutablePointer<CChar>?

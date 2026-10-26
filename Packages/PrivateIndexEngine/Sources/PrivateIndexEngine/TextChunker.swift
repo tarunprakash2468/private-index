@@ -54,34 +54,20 @@ public struct TextChunker: Sendable {
     /// - Parameter text: The input text to chunk.
     /// - Returns: An array of chunk strings.
     public func chunk(_ text: String) -> [String] {
-        guard !text.isEmpty else {
-            return []
-        }
-
-        let characters = Array(text)
-        let totalCount = characters.count
-
-        // Short text: return as a single chunk
-        if totalCount <= windowSize {
-            return [text]
-        }
+        guard !text.isEmpty else { return [] }
+        let count = text.count
+        if count <= windowSize { return [text] }
 
         var chunks: [String] = []
-        var start = 0
+        var startIndex = text.startIndex
 
-        while start < totalCount {
-            let end = min(start + windowSize, totalCount)
-            let chunk = String(characters[start..<end])
-            chunks.append(chunk)
-
-            // If we've reached the end, stop
-            if end == totalCount {
-                break
-            }
-
-            start += stride
+        while startIndex < text.endIndex {
+            let endIndex = text.index(startIndex, offsetBy: windowSize, limitedBy: text.endIndex) ?? text.endIndex
+            chunks.append(String(text[startIndex..<endIndex]))
+            if endIndex == text.endIndex { break }
+            guard let nextStart = text.index(startIndex, offsetBy: stride, limitedBy: text.endIndex) else { break }
+            startIndex = nextStart
         }
-
         return chunks
     }
 }
