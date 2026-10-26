@@ -1,5 +1,87 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Watch: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "watch",
+            abstract: "Run background watcher daemon (multi-folder & cloud auto-discovery)"
+        )
+
+        @Argument(help: "One or more directories to monitor (prompts interactively, defaults to All discovered locations)")
+        var paths: [String] = []
+
+        @Flag(
+            name: [.customLong("no-download"), .customLong("skip-cloud-download")],
+            help: "Disable automatic downloading of evicted cloud files"
+        )
+        var noDownload: Bool = false
+
+        @Option(
+            name: .customLong("min-free-space"),
+            help: "Minimum free disk space buffer before downloading cloud files in GB (default: 10)"
+        )
+        var minFreeSpace: Int64 = 10
+
+        @Flag(
+            name: .customLong("install-launchagent"),
+            help: "Generate and load launchd LaunchAgent to run 24/7 headlessly on login"
+        )
+        var installLaunchAgent: Bool = false
+
+        @Flag(
+            name: [.customLong("uninstall-launchagent"), .customLong("remove-launchagent")],
+            help: "Unload and remove the background launchd LaunchAgent"
+        )
+        var uninstallLaunchAgent: Bool = false
+
+        func run() async throws {
+            if uninstallLaunchAgent {
+                do {
+                    try uninstallWatcherLaunchAgent()
+                    return
+                } catch {
+                    print("\(ANSI.red)Error uninstalling LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
+                    throw ExitCode.failure
+                }
+            }
+
+            let resolvedPaths: [String]
+            if !paths.isEmpty {
+                resolvedPaths = paths.map { ($0 as NSString).expandingTildeInPath }
+            } else {
+                resolvedPaths = promptLocationSelection()
+            }
+
+            if installLaunchAgent {
+                for p in resolvedPaths {
+                    guard FileManager.default.fileExists(atPath: p) else {
+                        print("\(ANSI.red)Error:\(ANSI.reset) Directory '\(p)' does not exist.")
+                        throw ExitCode.failure
+                    }
+                }
+                do {
+                    try installWatcherLaunchAgent(paths: resolvedPaths, noDownload: noDownload)
+                    return
+                } catch {
+                    print("\(ANSI.red)Error installing LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
+                    throw ExitCode.failure
+                }
+            }
+
+            let minBufferBytes = minFreeSpace * 1024 * 1024 * 1024
+            let downloadPolicy = !noDownload
+            do {
+                try await runWatch(paths: resolvedPaths, downloadCloudFiles: downloadPolicy, minBufferBytes: minBufferBytes)
+            } catch {
+                print("\(ANSI.red)Watcher error:\(ANSI.reset) \(error.localizedDescription)")
+                throw ExitCode.failure
+            }
+            dispatchMain()
+        }
+    }
+}
 
 func promptLocationSelection() -> [String] {
     let discovered = CloudStorageDetector.discoverLocations(includeHome: true)
@@ -197,110 +279,4 @@ func runWatch(
     minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
 ) async throws {
     try await runWatch(paths: [path], downloadCloudFiles: downloadCloudFiles, minBufferBytes: minBufferBytes)
-}
-
-func handleWatchCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi watch\(ANSI.reset) — Run background watcher daemon for live folder monitoring
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi watch [path...] [options]
-
-        \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
-            [path...]                One or more directories to monitor (prompts interactively, defaults to All discovered locations)
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            --no-download            Disable automatic downloading of evicted cloud files
-            --min-free-space <GB>    Minimum free disk space buffer before downloading cloud files (default: 10GB)
-            --install-launchagent    Generate and load launchd LaunchAgent to run 24/7 headlessly on login
-            --uninstall-launchagent  Unload and remove the background launchd LaunchAgent
-            -h, --help               Display this help message
-
-        \(ANSI.bold)EXAMPLES:\(ANSI.reset)
-            pi watch
-            pi watch ~/Documents
-            pi watch ~/Documents ~/Downloads
-            pi watch --no-download
-            pi watch --install-launchagent
-        """)
-        exit(0)
-    }
-
-    var installLaunchAgent = false
-    var uninstallLaunchAgent = false
-    var noDownload = false
-    var minFreeSpaceGB: Int64 = 10
-    var pathArgs: [String] = []
-
-    var i = 2
-    while i < args.count {
-        let arg = args[i]
-        if arg == "--install-launchagent" {
-            installLaunchAgent = true
-            i += 1
-        } else if arg == "--uninstall-launchagent" || arg == "--remove-launchagent" {
-            uninstallLaunchAgent = true
-            i += 1
-        } else if arg == "--no-download" || arg == "--skip-cloud-download" {
-            noDownload = true
-            i += 1
-        } else if arg == "--min-free-space", i + 1 < args.count, let gb = Int64(args[i + 1]) {
-            minFreeSpaceGB = gb
-            i += 2
-        } else if arg.hasPrefix("--min-free-space="), let gb = Int64(arg.dropFirst("--min-free-space=".count)) {
-            minFreeSpaceGB = gb
-            i += 1
-        } else if !arg.hasPrefix("-") {
-            pathArgs.append(arg)
-            i += 1
-        } else {
-            i += 1
-        }
-    }
-
-    if uninstallLaunchAgent {
-        do {
-            try uninstallWatcherLaunchAgent()
-            exit(0)
-        } catch {
-            print("\(ANSI.red)Error uninstalling LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
-        }
-    }
-
-    let resolvedPaths: [String]
-    if !pathArgs.isEmpty {
-        resolvedPaths = pathArgs.map { ($0 as NSString).expandingTildeInPath }
-    } else {
-        resolvedPaths = promptLocationSelection()
-    }
-
-    if installLaunchAgent {
-        for p in resolvedPaths {
-            guard FileManager.default.fileExists(atPath: p) else {
-                print("\(ANSI.red)Error:\(ANSI.reset) Directory '\(p)' does not exist.")
-                exit(1)
-            }
-        }
-        do {
-            try installWatcherLaunchAgent(paths: resolvedPaths, noDownload: noDownload)
-            exit(0)
-        } catch {
-            print("\(ANSI.red)Error installing LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
-        }
-    }
-
-    let minBufferBytes = minFreeSpaceGB * 1024 * 1024 * 1024
-    let downloadPolicy = !noDownload
-    Task {
-        do {
-            try await runWatch(paths: resolvedPaths, downloadCloudFiles: downloadPolicy, minBufferBytes: minBufferBytes)
-        } catch {
-            print("\(ANSI.red)Watcher error:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
-        }
-    }
-    dispatchMain()
 }

@@ -1,5 +1,27 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Index: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "index",
+            abstract: "Index documents in the specified directory"
+        )
+
+        @Argument(help: "Directory to scan and index (e.g. ~/Documents)")
+        var path: String
+
+        func run() async throws {
+            do {
+                try await runIndex(path: path)
+            } catch {
+                print("\(ANSI.red)Indexing error:\(ANSI.reset) \(error.localizedDescription)")
+                throw ExitCode.failure
+            }
+        }
+    }
+}
 
 func runIndex(path: String) async throws {
     let expandedPath = (path as NSString).expandingTildeInPath
@@ -30,37 +52,4 @@ func runIndex(path: String) async throws {
       • Chunks indexed:  \(report.chunksIndexed)
       • Time elapsed:    \(String(format: "%.2f", report.duration))s
     """)
-}
-
-func handleIndexCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi index\(ANSI.reset) — Index documents in a directory
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi index <path>
-
-        \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
-            <path>                   Directory to scan and index (e.g. ~/Documents)
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            -h, --help               Display this help message
-        """)
-        exit(0)
-    }
-    guard args.count > 2 else {
-        print("\(ANSI.red)Error:\(ANSI.reset) Please specify a path to index. e.g. `private-index-cli index ~/Documents`")
-        exit(1)
-    }
-    let targetPath = args[2]
-    Task {
-        do {
-            try await runIndex(path: targetPath)
-            exit(0)
-        } catch {
-            print("\(ANSI.red)Indexing error:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
-        }
-    }
-    RunLoop.main.run()
 }

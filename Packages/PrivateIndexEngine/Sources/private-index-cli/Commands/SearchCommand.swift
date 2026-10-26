@@ -1,5 +1,107 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Search: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "search",
+            abstract: "Run search for a query (default mode: hybrid)"
+        )
+
+        @Argument(help: "Search query string")
+        var query: [String] = []
+
+        @Option(
+            name: .customLong("mode"),
+            help: "Search retrieval mode (default: hybrid)"
+        )
+        var mode: String = "hybrid"
+
+        @Option(
+            name: .customLong("limit"),
+            help: "Maximum number of results to return (default: 10)"
+        )
+        var limit: Int = 10
+
+        @Option(
+            name: [.customLong("min-similarity"), .customLong("threshold")],
+            help: "Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)"
+        )
+        var minSimilarity: String = "35%"
+
+        @Option(
+            name: [.customLong("vector-weight"), .customLong("w-vector")],
+            help: "Vector similarity weight for RRF fusion (default: 0.5)"
+        )
+        var vectorWeight: Float = 0.5
+
+        @Option(
+            name: [.customLong("keyword-weight"), .customLong("w-keyword")],
+            help: "BM25 keyword weight for RRF fusion (default: 0.5)"
+        )
+        var keywordWeight: Float = 0.5
+
+        @Flag(
+            name: .customLong("json"),
+            help: "Output results as strict JSON array (suppresses banners and formatting)"
+        )
+        var json: Bool = false
+
+        mutating func validate() throws {
+            let queryString = query.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !queryString.isEmpty else {
+                let msg = "Please specify a search query. e.g. `pi search \"privacy machine learning\"`"
+                if json {
+                    outputJSONError(msg)
+                } else {
+                    throw ValidationError(msg)
+                }
+            }
+
+            guard let _ = SearchMode(rawValue: mode.lowercased()) else {
+                let msg = "Invalid mode '\(mode)'. Valid modes: hybrid, vector, keyword."
+                if json {
+                    outputJSONError(msg)
+                } else {
+                    throw ValidationError(msg)
+                }
+            }
+        }
+
+        func run() async throws {
+            let queryString = query.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let searchMode = SearchMode(rawValue: mode.lowercased()) else {
+                let msg = "Invalid mode '\(mode)'. Valid modes: hybrid, vector, keyword."
+                if json {
+                    outputJSONError(msg)
+                } else {
+                    throw ValidationError(msg)
+                }
+            }
+            let sim = parseSimilarity(minSimilarity)
+
+            do {
+                try await runSearch(
+                    query: queryString,
+                    limit: limit,
+                    mode: searchMode,
+                    vectorWeight: vectorWeight,
+                    keywordWeight: keywordWeight,
+                    minSimilarity: sim,
+                    isJSON: json
+                )
+            } catch {
+                if json {
+                    outputJSONError(error.localizedDescription)
+                } else {
+                    print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
+                    throw ExitCode.failure
+                }
+            }
+        }
+    }
+}
 
 func parseSimilarity(_ raw: String) -> Float {
     var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -157,151 +259,4 @@ func runSearch(
         let preview = snippet.count > 160 ? String(snippet.prefix(160)) + "..." : snippet
         print("   \(preview)\n")
     }
-}
-
-func handleSearchCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi search\(ANSI.reset) — Run on-device hybrid, vector, or keyword search
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi search <query> [options]
-
-        \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
-            <query>                          Search query string
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            --mode <hybrid|vector|keyword>   Search mode (default: hybrid)
-            --limit <N>                      Maximum results to return (default: 10)
-            --min-similarity <pct>           Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)
-            --vector-weight <W>              Vector similarity weight for RRF fusion (default: 0.5)
-            --keyword-weight <W>             BM25 keyword weight for RRF fusion (default: 0.5)
-            --json                           Output results as strict JSON array (suppresses banners and formatting)
-            -h, --help                       Display this help message
-
-        \(ANSI.bold)EXAMPLES:\(ANSI.reset)
-            pi search "33 bond st"
-            pi search "33 bond st" --min-similarity 25%
-            pi search "meeting notes" --mode hybrid --limit 5
-            pi search "ERR_404_NOT_FOUND" --mode keyword
-            pi search "salary" --json
-        """)
-        exit(0)
-    }
-
-    var limit = 10
-    var mode: SearchMode = .hybrid
-    var vectorWeight: Float = 0.5
-    var keywordWeight: Float = 0.5
-    var minSimilarity: Float = 0.35
-    var queryTerms: [String] = []
-    var isJSON = false
-
-    var i = 2
-    while i < args.count {
-        let arg = args[i]
-        if arg == "--json" {
-            isJSON = true
-            i += 1
-        } else if arg == "--limit", i + 1 < args.count, let parsedLimit = Int(args[i + 1]) {
-            limit = parsedLimit
-            i += 2
-        } else if arg.hasPrefix("--limit="), let parsedLimit = Int(arg.dropFirst("--limit=".count)) {
-            limit = parsedLimit
-            i += 1
-        } else if arg == "--mode", i + 1 < args.count {
-            let modeRaw = args[i + 1].lowercased()
-            guard let parsedMode = SearchMode(rawValue: modeRaw) else {
-                let msg = "Invalid mode '\(args[i + 1])'. Valid modes: hybrid, vector, keyword."
-                if isJSON || args.contains("--json") {
-                    outputJSONError(msg)
-                } else {
-                    print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
-                    exit(1)
-                }
-            }
-            mode = parsedMode
-            i += 2
-        } else if arg.hasPrefix("--mode=") {
-            let modeRaw = String(arg.dropFirst("--mode=".count)).lowercased()
-            guard let parsedMode = SearchMode(rawValue: modeRaw) else {
-                let msg = "Invalid mode '\(modeRaw)'. Valid modes: hybrid, vector, keyword."
-                if isJSON || args.contains("--json") {
-                    outputJSONError(msg)
-                } else {
-                    print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
-                    exit(1)
-                }
-            }
-            mode = parsedMode
-            i += 1
-        } else if (arg == "--min-similarity" || arg == "--threshold"), i + 1 < args.count {
-            minSimilarity = parseSimilarity(args[i + 1])
-            i += 2
-        } else if arg.hasPrefix("--min-similarity=") {
-            let val = String(arg.dropFirst("--min-similarity=".count))
-            minSimilarity = parseSimilarity(val)
-            i += 1
-        } else if arg.hasPrefix("--threshold=") {
-            let val = String(arg.dropFirst("--threshold=".count))
-            minSimilarity = parseSimilarity(val)
-            i += 1
-        } else if (arg == "--vector-weight" || arg == "--w-vector"), i + 1 < args.count, let weight = Float(args[i + 1]) {
-            vectorWeight = weight
-            i += 2
-        } else if arg.hasPrefix("--vector-weight="), let weight = Float(arg.dropFirst("--vector-weight=".count)) {
-            vectorWeight = weight
-            i += 1
-        } else if (arg == "--keyword-weight" || arg == "--w-keyword"), i + 1 < args.count, let weight = Float(args[i + 1]) {
-            keywordWeight = weight
-            i += 2
-        } else if arg.hasPrefix("--keyword-weight="), let weight = Float(arg.dropFirst("--keyword-weight=".count)) {
-            keywordWeight = weight
-            i += 1
-        } else {
-            queryTerms.append(args[i])
-            i += 1
-        }
-    }
-
-    let query = queryTerms.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !query.isEmpty else {
-        let msg = "Please specify a search query. e.g. `pi search \"privacy machine learning\"`"
-        if isJSON {
-            outputJSONError(msg)
-        } else {
-            print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
-            exit(1)
-        }
-    }
-
-    let searchLimit = limit
-    let searchMode = mode
-    let searchVectorWeight = vectorWeight
-    let searchKeywordWeight = keywordWeight
-    let searchMinSimilarity = minSimilarity
-    let searchIsJSON = isJSON
-
-    Task {
-        do {
-            try await runSearch(
-                query: query,
-                limit: searchLimit,
-                mode: searchMode,
-                vectorWeight: searchVectorWeight,
-                keywordWeight: searchKeywordWeight,
-                minSimilarity: searchMinSimilarity,
-                isJSON: searchIsJSON
-            )
-            exit(0)
-        } catch {
-            if searchIsJSON {
-                outputJSONError(error.localizedDescription)
-            } else {
-                print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
-                exit(1)
-            }
-        }
-    }
-    RunLoop.main.run()
 }

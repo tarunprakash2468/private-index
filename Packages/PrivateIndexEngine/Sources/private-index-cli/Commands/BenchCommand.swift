@@ -1,5 +1,40 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Bench: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "bench",
+            abstract: "Run on-device Apple Silicon performance benchmark"
+        )
+
+        @Option(
+            name: .customLong("vectors"),
+            help: "Number of vectors for insertion/retrieval test (default: 1,000)"
+        )
+        var vectors: Int = 1000
+
+        @Flag(
+            name: .customLong("json"),
+            help: "Output metrics as machine-readable JSON"
+        )
+        var json: Bool = false
+
+        func run() async throws {
+            do {
+                try await runBench(vectorCount: vectors, asJSON: json)
+            } catch {
+                if json {
+                    outputJSONError(error.localizedDescription)
+                } else {
+                    print("\(ANSI.red)Benchmark error:\(ANSI.reset) \(error.localizedDescription)")
+                    throw ExitCode.failure
+                }
+            }
+        }
+    }
+}
 
 func runBench(vectorCount: Int, asJSON: Bool) async throws {
     let runner = BenchmarkRunner(vectorCount: vectorCount)
@@ -71,60 +106,4 @@ func runBench(vectorCount: Int, asJSON: Bool) async throws {
     let memMB = String(format: "%.1f", metrics.resources.peakMemoryMB)
     print("  • Peak Resident (RSS): \(ANSI.bold)\(memMB) MB\(ANSI.reset)")
     print("  • Network Activity:    \(ANSI.green)0 bytes transmitted (zero socket / cloud transmission verified)\(ANSI.reset)\n")
-}
-
-func handleBenchCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi bench\(ANSI.reset) — Run on-device Apple Silicon performance benchmark
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi bench [options]
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            --vectors <N>  Number of vectors for insertion/retrieval test (default: 1000)
-            --json         Output benchmark metrics as machine-readable JSON
-            -h, --help     Display this help message
-
-        \(ANSI.bold)EXAMPLES:\(ANSI.reset)
-            pi bench
-            pi bench --vectors 5000
-            pi bench --json
-        """)
-        exit(0)
-    }
-
-    var vectorCount = 1000
-    var asJSON = false
-
-    var i = 2
-    while i < args.count {
-        let arg = args[i]
-        if arg == "--vectors", i + 1 < args.count, let parsed = Int(args[i + 1]) {
-            vectorCount = parsed
-            i += 2
-        } else if arg.hasPrefix("--vectors="), let parsed = Int(arg.dropFirst("--vectors=".count)) {
-            vectorCount = parsed
-            i += 1
-        } else if arg == "--json" {
-            asJSON = true
-            i += 1
-        } else {
-            i += 1
-        }
-    }
-
-    let benchVectorCount = vectorCount
-    let benchAsJSON = asJSON
-
-    Task {
-        do {
-            try await runBench(vectorCount: benchVectorCount, asJSON: benchAsJSON)
-            exit(0)
-        } catch {
-            print("\(ANSI.red)Benchmark error:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
-        }
-    }
-    RunLoop.main.run()
 }

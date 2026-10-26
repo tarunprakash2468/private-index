@@ -17,6 +17,9 @@ let package = Package(
             targets: ["private-index-cli"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+    ],
     targets: [
         // C target: vendored sqlite-vec amalgamation linked against system libsqlite3
         .target(
@@ -47,7 +50,10 @@ let package = Package(
         // Developer CLI
         .executableTarget(
             name: "private-index-cli",
-            dependencies: ["PrivateIndexEngine"],
+            dependencies: [
+                "PrivateIndexEngine",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             path: "Sources/private-index-cli",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),

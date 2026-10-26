@@ -1,5 +1,25 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Stats: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "stats",
+            abstract: "Show database stats and indexed document counts",
+            aliases: ["status"]
+        )
+
+        func run() throws {
+            do {
+                try runStats()
+            } catch {
+                print("\(ANSI.red)Error:\(ANSI.reset) \(error.localizedDescription)")
+                throw ExitCode.failure
+            }
+        }
+    }
+}
 
 func runStats() throws {
     let dbURL = defaultDatabaseURL()
@@ -20,26 +40,4 @@ func runStats() throws {
       • Indexed files:  \(allFiles.count)
       • Dimensions:     384 (Cosine Distance)
     """)
-}
-
-func handleStatsCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi stats\(ANSI.reset) — Show database statistics and indexed document counts
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi stats
-            pi status
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            -h, --help    Display this help message
-        """)
-        exit(0)
-    }
-    do {
-        try runStats()
-    } catch {
-        print("\(ANSI.red)Error:\(ANSI.reset) \(error.localizedDescription)")
-        exit(1)
-    }
 }

@@ -1,5 +1,24 @@
 import Foundation
+import ArgumentParser
 import PrivateIndexEngine
+
+extension PrivateIndexCLI {
+    struct Reset: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "reset",
+            abstract: "Clear database and purge all vector embeddings"
+        )
+
+        func run() throws {
+            do {
+                try runReset()
+            } catch {
+                print("\(ANSI.red)Error:\(ANSI.reset) \(error.localizedDescription)")
+                throw ExitCode.failure
+            }
+        }
+    }
+}
 
 func runReset() throws {
     let dbURL = defaultDatabaseURL()
@@ -15,26 +34,5 @@ func runReset() throws {
         print("\(ANSI.green)✔ Database cleared successfully.\(ANSI.reset)")
     } else {
         print("Database is already empty.")
-    }
-}
-
-func handleResetCommand(args: [String]) {
-    if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
-        print("""
-        \(ANSI.bold)\(ANSI.cyan)pi reset\(ANSI.reset) — Clear database and purge all vector embeddings
-
-        \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi reset
-
-        \(ANSI.bold)OPTIONS:\(ANSI.reset)
-            -h, --help    Display this help message
-        """)
-        exit(0)
-    }
-    do {
-        try runReset()
-    } catch {
-        print("\(ANSI.red)Error:\(ANSI.reset) \(error.localizedDescription)")
-        exit(1)
     }
 }
