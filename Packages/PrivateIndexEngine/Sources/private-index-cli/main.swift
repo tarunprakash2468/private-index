@@ -27,26 +27,12 @@ func setupEngine(
     minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
 ) throws -> (VectorStore, IndexCoordinator) {
     let dbURL = defaultDatabaseURL()
-    let store = try VectorStore(at: dbURL)
-    try store.createSchema()
-
-    let tokenizer: BertTokenizer
-    if let t = try? BertTokenizer() {
-        tokenizer = t
-    } else {
-        tokenizer = BertTokenizer(vocab: [:])
-    }
-
-    let model = CoreMLEmbeddingModel.loadDefaultModel(tokenizer: tokenizer)
-
-    let coordinator = IndexCoordinator(
-        vectorStore: store,
-        fileCrawler: FileCrawler(downloadCloudFiles: downloadCloudFiles, minDiskBufferBytes: minBufferBytes),
-        textChunker: TextChunker(windowSize: 500, overlap: 100),
-        embeddingModel: model
+    let instance = try EngineFactory.create(
+        databaseURL: dbURL,
+        downloadCloudFiles: downloadCloudFiles,
+        minDiskBufferBytes: minBufferBytes
     )
-
-    return (store, coordinator)
+    return (instance.store, instance.coordinator)
 }
 
 // MARK: - Commands

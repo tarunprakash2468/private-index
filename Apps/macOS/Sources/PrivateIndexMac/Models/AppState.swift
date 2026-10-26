@@ -109,29 +109,12 @@ public final class AppState {
     private func setupEngine() {
         do {
             let dbURL = iCloudContainerManager.shared.databaseURL
-            let store = try VectorStore(at: dbURL)
-            try store.createSchema()
-            self.vectorStore = store
-
-            // Setup Tokenizer & Model
-            let tokenizer: BertTokenizer
-            if let t = try? BertTokenizer() {
-                tokenizer = t
-            } else {
-                tokenizer = BertTokenizer(vocab: [:])
-            }
-
-            let model = CoreMLEmbeddingModel.loadDefaultModel(tokenizer: tokenizer)
-
-            self.coordinator = IndexCoordinator(
-                vectorStore: store,
-                fileCrawler: FileCrawler(),
-                textChunker: TextChunker(windowSize: 500, overlap: 100),
-                embeddingModel: model
-            )
+            let instance = try EngineFactory.create(databaseURL: dbURL)
+            self.vectorStore = instance.store
+            self.coordinator = instance.coordinator
 
             // Count existing files
-            if let files = try? store.getAllIndexedFiles() {
+            if let files = try? instance.store.getAllIndexedFiles() {
                 self.totalFilesIndexed = files.count
             }
         } catch {
