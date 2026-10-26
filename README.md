@@ -56,11 +56,20 @@ Run commands with the sleek **`pi`** shorthand (or `private-index`):
 # Index a directory
 pi index ~/Documents
 
-# Live folder watching daemon (2.0s debounce & sleep protection)
+# Live folder watching daemon with interactive multi-cloud detection
+# Detects Home (~/), iCloud Drive, Google Drive, and OneDrive automatically
+pi watch
+
+# Watch a specific directory directly
 pi watch ~/Documents
 
+# Control on-demand cloud downloading and disk headroom (default: 10 GB)
+pi watch --no-download
+pi watch --min-free-space 15
+
 # Run headlessly 24/7 on login via macOS launchd LaunchAgent
-pi watch --install-launchagent ~/Documents
+pi watch --install-launchagent
+pi watch --uninstall-launchagent
 
 # Search documents using Hybrid Search (default: Core ML vector + FTS5 BM25 with RRF)
 pi search "zero-cloud privacy architecture" --limit 5
@@ -73,8 +82,9 @@ pi search "on-device inference" --mode hybrid --vector-weight 0.7 --keyword-weig
 # Output results as strict JSON array for scripting, automation, or extensions
 pi search "salary" --json
 
-# Check index statistics
+# Check index database statistics (or use 'pi status')
 pi stats
+pi status
 ```
 
 *Tab autocompletions for **Zsh**, **Bash**, and **Fish** are automatically configured when installed via Homebrew.*
@@ -105,10 +115,11 @@ npm run dev
 
 ## Supported File Formats
 
-Private Index indexes over 30 plain-text, markdown, and code formats:
+Private Index indexes over 30 plain-text, markdown, PDF, code, and image formats:
 
 | Category | Extensions |
 |---|---|
+| **Images & Screenshots** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.heic`, `.webp` (On-device text extraction via native Apple `Vision` OCR) |
 | **Documents & PDFs** | `.pdf` (Digital PDFs via `PDFKit` + Scanned/Image-Only PDFs via native Apple `Vision` OCR) |
 | **Notes & Text** | `.txt`, `.text`, `.md`, `.markdown`, `.mdown`, `.mkd`, `.adoc`, `.rst`, `.tex` |
 | **Code & Scripts** | `.swift`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.c`, `.h`, `.cpp`, `.rs`, `.go`, `.java`, `.kt`, `.rb`, `.sh`, `.zsh`, `.bash`, `.lua`, `.sql` |
@@ -124,32 +135,67 @@ Private Index indexes over 30 plain-text, markdown, and code formats:
 
 ---
 
-## Quick Start
+## Quick Start & Installation
 
-### macOS Application
+### Option 1: Homebrew (CLI — Recommended)
 
+Install the `pi` CLI and shell autocompletions directly via Homebrew:
+
+```bash
+# Add the tap
+brew tap tarunprakash2468/private-index https://github.com/tarunprakash2468/private-index
+
+# Install private-index
+brew install private-index
+
+# Verify installation
+pi help
+```
+
+To update in the future:
+```bash
+brew upgrade private-index
+```
+
+### Option 2: Pre-Built macOS App (.dmg)
+
+1. Download the latest `PrivateIndexMac-*.dmg` from [GitHub Releases](https://github.com/tarunprakash2468/private-index/releases/latest).
+2. Open the disk image and drag **Private Index** to your `/Applications` folder.
+3. Launch **Private Index** and press `⌘ + Shift + Space` anywhere to search.
+4. Access settings and indexing controls from the menu bar icon.
+
+### Option 3: Run from Source
+
+#### macOS Application
 ```bash
 cd Apps/macOS
 swift run PrivateIndexMac
 ```
 
-- Press `⌘ + Shift + Space` to summon the search window.
-- Open **Settings** to choose which folder to index (defaults to your personal iCloud Drive Documents).
-
-### Developer CLI (`pi`)
-
+#### Developer CLI (`pi`)
 ```bash
-# Install via Homebrew
-brew tap tarunprakash2468/private-index https://github.com/tarunprakash2468/private-index
-brew install private-index
-
-# Benchmark on-device performance
-pi bench
-pi bench --vectors 5000 --json
-
-# Or run from source
 cd Packages/PrivateIndexEngine
 swift run private-index-cli help
+```
+
+---
+
+## Uninstallation
+
+If you ever need to perform a clean reset or uninstall:
+
+```bash
+# 1. Uninstall the Homebrew CLI formula
+brew uninstall private-index
+
+# 2. Stop and remove the background watcher LaunchAgent (if installed)
+pi watch --uninstall-launchagent  # or launchctl unload ~/Library/LaunchAgents/com.tarunprakash.private-index.watcher.plist 2>/dev/null
+
+# 3. Remove the local SQLite index database and caches (optional)
+rm -rf ~/.private-index
+
+# 4. Remove the macOS application from Applications (if installed)
+rm -rf "/Applications/Private Index.app"
 ```
 
 ---
