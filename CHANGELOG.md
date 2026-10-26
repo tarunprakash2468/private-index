@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.5.0...private-index-v0.6.0) (2026-10-26)
+
+
+### Features
+
+* **bench:** implement dedicated pi bench performance benchmarking command ([#16](https://github.com/tarunprakash2468/private-index/issues/16)) ([45f8c20](https://github.com/tarunprakash2468/private-index/commit/45f8c20b13dca172b789b15ba45dd5a6fc12edab))
+
+## [0.5.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.4.0...private-index-v0.5.0) (2026-10-26)
+
+
+### Features
+
+* **crawler:** implement safe directory symlink traversal, cycle detection, and expanded folder exclusions ([64a322c](https://github.com/tarunprakash2468/private-index/commit/64a322ce457c3f03828a7c66433f0c318a82a447))
+* **crawler:** safe directory symlink traversal, cycle detection, and expanded folder exclusions ([3fd2b20](https://github.com/tarunprakash2468/private-index/commit/3fd2b204cd9b1ba110f5b670ed4907615e1d8013))
+
 ## [0.4.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.3.1...private-index-v0.4.0) (2026-10-25)
 
 

@@ -143,6 +143,10 @@ swift run PrivateIndexMac
 brew tap tarunprakash2468/private-index https://github.com/tarunprakash2468/private-index
 brew install private-index
 
+# Benchmark on-device performance
+pi bench
+pi bench --vectors 5000 --json
+
 # Or run from source
 cd Packages/PrivateIndexEngine
 swift run private-index-cli help
