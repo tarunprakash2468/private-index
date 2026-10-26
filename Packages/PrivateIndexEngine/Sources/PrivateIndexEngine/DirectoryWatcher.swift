@@ -31,7 +31,8 @@ public final class DirectoryWatcher: @unchecked Sendable {
     private let onChange: ChangeHandler?
     private let onPathsChanged: DetailedChangeHandler?
 
-    public private(set) var watchedURL: URL?
+    public private(set) var watchedURLs: [URL] = []
+    public var watchedURL: URL? { watchedURLs.first }
     public private(set) var isWatching: Bool = false
     public private(set) var lastEventId: UInt64 = 0
     public var needsFullRescan: Bool = false
@@ -60,14 +61,15 @@ public final class DirectoryWatcher: @unchecked Sendable {
         stop()
     }
 
-    /// Starts monitoring `directoryURL` for changes.
-    public func start(watching directoryURL: URL) {
+    /// Starts monitoring multiple directories for changes in a unified FSEvents stream.
+    public func start(watching directoryURLs: [URL]) {
         stop()
-        self.watchedURL = directoryURL
+        guard !directoryURLs.isEmpty else { return }
+        self.watchedURLs = directoryURLs
         self.isWatching = true
 
         #if os(macOS)
-        let pathsToWatch = [directoryURL.path] as CFArray
+        let pathsToWatch = directoryURLs.map { $0.path } as CFArray
 
         var context = FSEventStreamContext(
             version: 0,
@@ -131,12 +133,17 @@ public final class DirectoryWatcher: @unchecked Sendable {
         #endif
     }
 
+    /// Convenience method to start monitoring a single directory.
+    public func start(watching directoryURL: URL) {
+        start(watching: [directoryURL])
+    }
+
     /// Stops monitoring and cancels all active timers.
     public func stop() {
         lock.lock()
         isWatching = false
         accumulatedPaths.removeAll()
-        self.watchedURL = nil
+        self.watchedURLs.removeAll()
         lock.unlock()
 
         queue.sync { [weak self] in

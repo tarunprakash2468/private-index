@@ -3,7 +3,7 @@ _pi_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="index watch search bench stats reset help --help -h"
+    commands="index watch search bench stats status reset help --help -h"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -11,9 +11,13 @@ _pi_completions() {
     fi
 
     case "${COMP_WORDS[1]}" in
-        index|watch)
+        index)
+            COMPREPLY=( $(compgen -d -- "$cur") )
+            return 0
+            ;;
+        watch)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "--install-launchagent" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--install-launchagent --uninstall-launchagent --no-download --min-free-space" -- "$cur") )
             else
                 COMPREPLY=( $(compgen -d -- "$cur") )
             fi

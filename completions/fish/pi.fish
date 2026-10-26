@@ -10,6 +10,7 @@ for cmd in pi private-index private-index-cli
     complete -c $cmd -n "__fish_use_subcommand" -a search -d "Run semantic similarity search"
     complete -c $cmd -n "__fish_use_subcommand" -a bench -d "Run on-device Apple Silicon performance benchmark"
     complete -c $cmd -n "__fish_use_subcommand" -a stats -d "Show database statistics"
+    complete -c $cmd -n "__fish_use_subcommand" -a status -d "Show database statistics"
     complete -c $cmd -n "__fish_use_subcommand" -a reset -d "Clear database and purge vectors"
     complete -c $cmd -n "__fish_use_subcommand" -a help -d "Display help message"
     complete -c $cmd -s h -l help -d "Display help message"
@@ -17,6 +18,9 @@ for cmd in pi private-index private-index-cli
     # Subcommand arguments
     complete -c $cmd -n "__fish_seen_subcommand_from index" -a "(__fish_complete_directories)" -d "Directory path"
     complete -c $cmd -n "__fish_seen_subcommand_from watch" -l install-launchagent -d "Install LaunchAgent for 24/7 background operation"
+    complete -c $cmd -n "__fish_seen_subcommand_from watch" -l uninstall-launchagent -d "Uninstall LaunchAgent"
+    complete -c $cmd -n "__fish_seen_subcommand_from watch" -l no-download -d "Disable automatic cloud file downloading"
+    complete -c $cmd -n "__fish_seen_subcommand_from watch" -l min-free-space -d "Minimum free disk space buffer in GB"
     complete -c $cmd -n "__fish_seen_subcommand_from watch" -a "(__fish_complete_directories)" -d "Directory path"
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l limit -d "Maximum search results"
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l mode -d "Search mode (hybrid, vector, keyword)" -r -a "hybrid vector keyword"
