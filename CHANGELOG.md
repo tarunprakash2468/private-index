@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.4.0...private-index-v0.5.0) (2026-10-26)
+
+
+### Features
+
+* **crawler:** implement safe directory symlink traversal, cycle detection, and expanded folder exclusions ([64a322c](https://github.com/tarunprakash2468/private-index/commit/64a322ce457c3f03828a7c66433f0c318a82a447))
+* **crawler:** safe directory symlink traversal, cycle detection, and expanded folder exclusions ([3fd2b20](https://github.com/tarunprakash2468/private-index/commit/3fd2b204cd9b1ba110f5b670ed4907615e1d8013))
+
 ## [0.4.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.3.1...private-index-v0.4.0) (2026-10-25)
 
 
