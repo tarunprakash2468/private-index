@@ -2,7 +2,7 @@
 """
 convert_model.py — Core ML Conversion Pipeline for Private Index
 
-Converts `sentence-transformers/all-MiniLM-L6-v2` into an Apple Neural Engine
+Converts `sentence-transformers/all-MiniLM-L6-v2` into an Apple Neural Engine (ANE)
 optimized Core ML `.mlpackage` with FP16 precision.
 
 The model graph includes mean pooling and L2 normalization baked in,
@@ -10,17 +10,28 @@ so a single inference call produces a normalized (1, 384) embedding vector.
 
 Usage:
     python3 -m venv .venv && source .venv/bin/activate
-    pip install -r requirements.txt
-    python3 convert_model.py [--output OUTPUT_PATH] [--max-length 128] [--verify]
+    pip install -r scripts/requirements.txt
+    python3 scripts/convert_model.py [--output OUTPUT_PATH] [--max-length 128] [--compute-units ALL] [--verify] [--compile]
 """
 
 import argparse
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
-import numpy as np
-import torch
-import torch.nn as nn
+try:
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    TORCH_AVAILABLE = True
+except ImportError:
+    np = None  # type: ignore
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+    TORCH_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -28,46 +39,57 @@ import torch.nn as nn
 # ---------------------------------------------------------------------------
 
 
-class SentenceTransformerWrapper(nn.Module):
-    """
-    Wraps a HuggingFace transformer model with mean-pooling and L2
-    normalization so the entire pipeline is a single traceable graph.
+if TORCH_AVAILABLE:
+    class SentenceTransformerWrapper(nn.Module):
+        """
+        Wraps a HuggingFace transformer model with mean-pooling and L2
+        normalization so the entire pipeline is a single traceable graph.
 
-    Input:  input_ids (1, seq_len), attention_mask (1, seq_len)
-    Output: normalized embedding (1, 384)
-    """
+        Inputs:
+            input_ids: torch.Tensor of shape (1, seq_len) with int32 token IDs.
+            attention_mask: torch.Tensor of shape (1, seq_len) with int32 binary mask (1 for active token, 0 for padding).
 
-    def __init__(self, transformer: nn.Module):
-        super().__init__()
-        self.transformer = transformer
+        Outputs:
+            torch.Tensor: L2-normalized sentence embedding vector of shape (1, 384).
+        """
 
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        # Run the transformer backbone
-        outputs = self.transformer(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-        )
-        token_embeddings = outputs.last_hidden_state  # (1, seq_len, 384)
+        def __init__(self, transformer: nn.Module):
+            super().__init__()
+            self.transformer = transformer
 
-        # Mean pooling: mask out padding tokens before averaging
-        mask_expanded = attention_mask.unsqueeze(-1).float()  # (1, seq_len, 1)
-        sum_embeddings = (token_embeddings * mask_expanded).sum(dim=1)  # (1, 384)
-        sum_mask = mask_expanded.sum(dim=1).clamp(min=1e-9)  # (1, 384)
-        mean_pooled = sum_embeddings / sum_mask  # (1, 384)
+        def forward(
+            self,
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+        ) -> torch.Tensor:
+            # Run the transformer backbone
+            outputs = self.transformer(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            )
+            token_embeddings = outputs.last_hidden_state  # (1, seq_len, 384)
 
-        # L2 normalize
-        norm = mean_pooled.norm(p=2, dim=1, keepdim=True).clamp(min=1e-12)
-        normalized = mean_pooled / norm  # (1, 384)
+            # Mean pooling: mask out padding tokens before averaging
+            mask_expanded = attention_mask.unsqueeze(-1).float()  # (1, seq_len, 1)
+            sum_embeddings = (token_embeddings * mask_expanded).sum(dim=1)  # (1, 384)
+            sum_mask = mask_expanded.sum(dim=1).clamp(min=1e-9)  # (1, 384)
+            mean_pooled = sum_embeddings / sum_mask  # (1, 384)
 
-        return normalized
+            # L2 normalize
+            norm = mean_pooled.norm(p=2, dim=1, keepdim=True).clamp(min=1e-12)
+            normalized = mean_pooled / norm  # (1, 384)
+
+            return normalized
+else:
+    class SentenceTransformerWrapper:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError(
+                "PyTorch is not available. Please install dependencies: pip install -r scripts/requirements.txt"
+            )
 
 
 # ---------------------------------------------------------------------------
-# 2. Conversion
+# 2. Custom MIL Ops Registration
 # ---------------------------------------------------------------------------
 
 
@@ -128,28 +150,101 @@ def _register_custom_torch_ops():
         print(f"Warning: could not register custom torch ops: {e}")
 
 
-def convert_model(output_path: str, max_length: int = 128) -> str:
+# ---------------------------------------------------------------------------
+# 3. Compute Units Resolution
+# ---------------------------------------------------------------------------
+
+
+def _resolve_compute_units(compute_units_str: str):
     """
-    Downloads, wraps, traces, and converts the model to Core ML.
+    Maps string identifier to coremltools ComputeUnit enum.
 
     Args:
-        output_path: Where to save the .mlpackage.
-        max_length: Fixed sequence length for ANE optimization.
+        compute_units_str: One of 'ALL', 'CPU_AND_NE', 'CPU_AND_GPU', 'CPU_ONLY'.
 
     Returns:
-        Path to the saved .mlpackage.
+        ct.ComputeUnit enum value.
+
+    Raises:
+        ValueError: If compute_units_str is unrecognized.
     """
     import coremltools as ct
-    from transformers import AutoModel, AutoTokenizer
+
+    mapping = {
+        "ALL": ct.ComputeUnit.ALL,
+        "CPU_AND_NE": ct.ComputeUnit.CPU_AND_NE,
+        "CPU_AND_GPU": ct.ComputeUnit.CPU_AND_GPU,
+        "CPU_ONLY": ct.ComputeUnit.CPU_ONLY,
+    }
+    key = compute_units_str.upper()
+    if key not in mapping:
+        raise ValueError(
+            f"Unsupported compute units '{compute_units_str}'. Supported options: {list(mapping.keys())}"
+        )
+    return mapping[key]
+
+
+# ---------------------------------------------------------------------------
+# 4. Conversion
+# ---------------------------------------------------------------------------
+
+
+def convert_model(
+    output_path: str,
+    max_length: int = 128,
+    compute_units: str = "ALL",
+    model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
+) -> str:
+    """
+    Downloads, wraps, traces, and converts the transformer model to Core ML.
+
+    Configured specifically for Apple Silicon and Apple Neural Engine (ANE)
+    acceleration:
+    - Fixed sequence length (static input shapes required by ANE)
+    - FP16 precision (optimal for ANE throughput and reduced memory footprint)
+    - Modern MIL mlprogram format
+
+    Args:
+        output_path: Path where the .mlpackage will be saved.
+        max_length: Fixed sequence length for ANE optimization (default: 128).
+        compute_units: Target compute units ('ALL', 'CPU_AND_NE', 'CPU_AND_GPU', 'CPU_ONLY').
+        model_id: HuggingFace model repo identifier.
+
+    Returns:
+        String path to the saved .mlpackage.
+
+    Raises:
+        RuntimeError: If dependency import, model loading, tracing, or conversion fails.
+    """
+    if not TORCH_AVAILABLE:
+        raise RuntimeError(
+            "Required dependencies (torch, numpy) are missing. "
+            "Please run: pip install -r scripts/requirements.txt"
+        )
+
+    try:
+        import coremltools as ct
+        from transformers import AutoModel, AutoTokenizer
+    except ImportError as e:
+        raise RuntimeError(
+            f"Required dependency missing: {e}. "
+            "Please run: pip install -r scripts/requirements.txt"
+        ) from e
 
     _register_custom_torch_ops()
+    target_compute_unit = _resolve_compute_units(compute_units)
 
-    model_id = "sentence-transformers/all-MiniLM-L6-v2"
     print(f"[1/5] Loading model: {model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    assert tokenizer is not None
-    base_model = AutoModel.from_pretrained(model_id)
-    base_model.eval()
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        if tokenizer is None:
+            raise ValueError(f"Failed to load tokenizer for {model_id}")
+        base_model = AutoModel.from_pretrained(model_id)
+        base_model.eval()
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load model or tokenizer '{model_id}' from HuggingFace Hub: {e}"
+        ) from e
 
     # Wrap with mean pooling + L2 norm
     wrapper = SentenceTransformerWrapper(base_model)
@@ -168,22 +263,36 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
     attention_mask = inputs["attention_mask"].to(torch.int32)
 
     print("[3/5] Tracing model with torch.jit.trace")
-    with torch.no_grad():
-        traced = torch.jit.trace(wrapper, (input_ids, attention_mask))
+    try:
+        with torch.no_grad():
+            traced = torch.jit.trace(wrapper, (input_ids, attention_mask))
+    except Exception as e:
+        raise RuntimeError(f"PyTorch JIT tracing failed: {e}") from e
 
-    print("[4/5] Converting to Core ML .mlpackage (FP16, mlprogram)")
-    mlmodel = ct.convert(
-        traced,
-        convert_to="mlprogram",
-        compute_precision=ct.precision.FLOAT16,
-        inputs=[
-            ct.TensorType(name="input_ids", shape=(1, max_length), dtype=np.int32),
-            ct.TensorType(
-                name="attention_mask", shape=(1, max_length), dtype=np.int32
-            ),
-        ],
-        compute_units=ct.ComputeUnit.ALL,
+    print(
+        f"[4/5] Converting to Core ML .mlpackage (FP16, mlprogram, compute_units={compute_units.upper()})"
     )
+    try:
+        mlmodel = ct.convert(
+            traced,
+            convert_to="mlprogram",
+            compute_precision=ct.precision.FLOAT16,
+            inputs=[
+                ct.TensorType(
+                    name="input_ids",
+                    shape=(1, max_length),
+                    dtype=np.int32,
+                ),
+                ct.TensorType(
+                    name="attention_mask",
+                    shape=(1, max_length),
+                    dtype=np.int32,
+                ),
+            ],
+            compute_units=target_compute_unit,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Core ML conversion failed: {e}") from e
 
     # Add metadata
     mlmodel.author = "Private Index"
@@ -192,14 +301,30 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
         f"Input: (1, {max_length}) token IDs. Output: (1, 384) normalized embedding."
     )
     mlmodel.version = "1.0.0"
+    mlmodel.input_description["input_ids"] = (
+        f"Token IDs from BertTokenizer, padded/truncated to shape (1, {max_length})"
+    )
+    mlmodel.input_description["attention_mask"] = (
+        f"Attention mask (1 for active token, 0 for padding), shape (1, {max_length})"
+    )
 
     print(f"[5/5] Saving to {output_path}")
-    mlmodel.save(output_path)
-    print(f"✅ Model saved to {output_path}")
+    out_path = Path(output_path).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    mlmodel.save(str(out_path))
+    print(f"✅ Model saved to {out_path}")
 
     # Export vocab.txt for the Swift BertTokenizer
     try:
-        vocab_dest = Path(__file__).resolve().parent.parent / "Packages" / "PrivateIndexEngine" / "Sources" / "PrivateIndexEngine" / "Resources" / "vocab.txt"
+        vocab_dest = (
+            Path(__file__).resolve().parent.parent
+            / "Packages"
+            / "PrivateIndexEngine"
+            / "Sources"
+            / "PrivateIndexEngine"
+            / "Resources"
+            / "vocab.txt"
+        )
         vocab_dest.parent.mkdir(parents=True, exist_ok=True)
         tokenizer.save_vocabulary(str(vocab_dest.parent))
         extra_model = vocab_dest.parent / "tokenizer.model"
@@ -209,25 +334,109 @@ def convert_model(output_path: str, max_length: int = 128) -> str:
     except Exception as e:
         print(f"⚠️ Note: Could not export vocab.txt automatically: {e}")
 
-    return output_path
+    return str(out_path)
 
 
 # ---------------------------------------------------------------------------
-# 3. Verification
+# 5. Compilation Helper
 # ---------------------------------------------------------------------------
 
 
-def verify_model(mlpackage_path: str, max_length: int = 128) -> bool:
+def compile_model(mlpackage_path: str, output_dir: Optional[str] = None) -> Path:
+    """
+    Compiles a Core ML .mlpackage into an optimized .mlmodelc bundle using `xcrun coremlc`.
+
+    Args:
+        mlpackage_path: Path to input .mlpackage.
+        output_dir: Optional destination folder. Defaults to PrivateIndexEngine Resources folder.
+
+    Returns:
+        Path to the compiled .mlmodelc directory.
+
+    Raises:
+        FileNotFoundError: If mlpackage_path does not exist.
+        RuntimeError: If xcrun is missing or compilation fails.
+    """
+    pkg_path = Path(mlpackage_path).resolve()
+    if not pkg_path.exists():
+        raise FileNotFoundError(f"Model package not found at: {pkg_path}")
+
+    if not shutil.which("xcrun"):
+        raise RuntimeError("xcrun not found in PATH. Ensure Xcode Command Line Tools are installed.")
+
+    if output_dir is None:
+        dest_dir = (
+            Path(__file__).resolve().parent.parent
+            / "Packages"
+            / "PrivateIndexEngine"
+            / "Sources"
+            / "PrivateIndexEngine"
+            / "Resources"
+        )
+    else:
+        dest_dir = Path(output_dir).resolve()
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n[Compiling] Running coremlc compile {pkg_path} to {dest_dir}...")
+    try:
+        subprocess.run(
+            ["xcrun", "coremlc", "compile", str(pkg_path), str(dest_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        stderr_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
+        raise RuntimeError(f"xcrun coremlc compilation failed:\n{stderr_msg}") from e
+
+    compiled_name = pkg_path.stem + ".mlmodelc"
+    compiled_path = dest_dir / compiled_name
+    print(f"✅ Successfully compiled model to {compiled_path}")
+    return compiled_path
+
+
+# ---------------------------------------------------------------------------
+# 6. Verification
+# ---------------------------------------------------------------------------
+
+
+def verify_model(
+    mlpackage_path: str,
+    max_length: int = 128,
+    compute_units: str = "ALL",
+) -> bool:
     """
     Verifies the converted Core ML model produces correct output:
     - Output shape is (1, 384)
-    - L2 norm ≈ 1.0
+    - L2 norm ≈ 1.0 (unit vector)
     - Cosine similarity with PyTorch reference ≥ 0.99
+    - Executes correctly under target compute units (e.g. ANE / CPU / GPU)
+
+    Args:
+        mlpackage_path: Path to the .mlpackage directory.
+        max_length: Sequence length used during conversion (default: 128).
+        compute_units: Compute unit target to verify.
+
+    Returns:
+        True if all checks pass, False otherwise.
     """
-    import coremltools as ct
-    from transformers import AutoModel, AutoTokenizer
+    if not TORCH_AVAILABLE:
+        raise RuntimeError(
+            "Required dependencies (torch, numpy) are missing. "
+            "Please run: pip install -r scripts/requirements.txt"
+        )
+
+    try:
+        import coremltools as ct
+        from transformers import AutoModel, AutoTokenizer
+    except ImportError as e:
+        raise RuntimeError(
+            f"Required dependency missing: {e}. "
+            "Please run: pip install -r scripts/requirements.txt"
+        ) from e
 
     _register_custom_torch_ops()
+    target_compute_unit = _resolve_compute_units(compute_units)
 
     model_id = "sentence-transformers/all-MiniLM-L6-v2"
     print("\n--- Verification ---")
@@ -255,8 +464,8 @@ def verify_model(mlpackage_path: str, max_length: int = 128) -> bool:
         pt_output = wrapper(input_ids, attention_mask).numpy()
 
     # Core ML inference
-    print(f"Loading Core ML model: {mlpackage_path}")
-    mlmodel = ct.models.MLModel(mlpackage_path)
+    print(f"Loading Core ML model: {mlpackage_path} (compute_units={compute_units.upper()})")
+    mlmodel = ct.models.MLModel(mlpackage_path, compute_units=target_compute_unit)
     coreml_pred = mlmodel.predict(
         {
             "input_ids": input_ids.numpy(),
@@ -313,13 +522,13 @@ def verify_model(mlpackage_path: str, max_length: int = 128) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 4. CLI Entry Point
+# 7. CLI Entry Point
 # ---------------------------------------------------------------------------
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert all-MiniLM-L6-v2 to Core ML .mlpackage"
+        description="Convert all-MiniLM-L6-v2 to Core ML .mlpackage with ANE acceleration"
     )
     parser.add_argument(
         "--output",
@@ -331,12 +540,19 @@ def main():
         "--max-length",
         type=int,
         default=128,
-        help="Fixed sequence length (default: 128)",
+        help="Fixed sequence length for ANE optimization (default: 128)",
+    )
+    parser.add_argument(
+        "--compute-units",
+        type=str,
+        default="ALL",
+        choices=["ALL", "CPU_AND_NE", "CPU_AND_GPU", "CPU_ONLY"],
+        help="Target compute units for Core ML execution (default: ALL)",
     )
     parser.add_argument(
         "--verify",
         action="store_true",
-        help="Run verification after conversion",
+        help="Run verification after conversion against PyTorch reference",
     )
     parser.add_argument(
         "--compile",
@@ -345,22 +561,29 @@ def main():
     )
     args = parser.parse_args()
 
-    output_path = convert_model(args.output, args.max_length)
+    try:
+        output_path = convert_model(
+            output_path=args.output,
+            max_length=args.max_length,
+            compute_units=args.compute_units,
+        )
 
-    if args.verify:
-        success = verify_model(output_path, args.max_length)
-        if not success:
-            sys.exit(1)
+        if args.verify:
+            success = verify_model(
+                mlpackage_path=output_path,
+                max_length=args.max_length,
+                compute_units=args.compute_units,
+            )
+            if not success:
+                sys.exit(1)
 
-    if args.compile:
-        import subprocess
-        resources_dir = Path(__file__).resolve().parent.parent / "Packages" / "PrivateIndexEngine" / "Sources" / "PrivateIndexEngine" / "Resources"
-        resources_dir.mkdir(parents=True, exist_ok=True)
-        print(f"\n[Compiling] Running coremlc compile {output_path} to {resources_dir}...")
-        subprocess.run(["xcrun", "coremlc", "compile", output_path, str(resources_dir)], check=True)
-        print(f"✅ Successfully compiled model to {resources_dir}/all-MiniLM-L6-v2.mlmodelc")
+        if args.compile:
+            compile_model(mlpackage_path=output_path)
 
-    print("\nDone.")
+        print("\nDone.")
+    except Exception as e:
+        print(f"\n❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
