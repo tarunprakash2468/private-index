@@ -24,12 +24,14 @@ final class FileCrawlerTests: XCTestCase {
         let txtFile = tempDir.appendingPathComponent("doc.txt")
         let swiftFile = tempDir.appendingPathComponent("Main.swift")
         let pngFile = tempDir.appendingPathComponent("image.png")
+        let mp3File = tempDir.appendingPathComponent("sound.mp3")
         let sqliteFile = tempDir.appendingPathComponent("database.sqlite")
 
         try "Hello markdown".write(to: mdFile, atomically: true, encoding: .utf8)
         try "Hello text".write(to: txtFile, atomically: true, encoding: .utf8)
         try "print(1)".write(to: swiftFile, atomically: true, encoding: .utf8)
         try "binary data".write(to: pngFile, atomically: true, encoding: .utf8)
+        try "audio data".write(to: mp3File, atomically: true, encoding: .utf8)
         try "sqlite data".write(to: sqliteFile, atomically: true, encoding: .utf8)
 
         let crawler = FileCrawler()
@@ -39,8 +41,28 @@ final class FileCrawlerTests: XCTestCase {
         XCTAssertTrue(indexableNames.contains("notes.md"))
         XCTAssertTrue(indexableNames.contains("doc.txt"))
         XCTAssertTrue(indexableNames.contains("Main.swift"))
-        XCTAssertFalse(indexableNames.contains("image.png"))
+        XCTAssertTrue(indexableNames.contains("image.png"))
+        XCTAssertFalse(indexableNames.contains("sound.mp3"))
         XCTAssertFalse(indexableNames.contains("database.sqlite"))
+    }
+
+    func testCrawlDiscoversAllSupportedImageExtensions() throws {
+        let extensions = ["png", "jpg", "jpeg", "heic", "webp", "tiff", "bmp"]
+        for ext in extensions {
+            let fileURL = tempDir.appendingPathComponent("photo.\(ext)")
+            try "fake image data".write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+
+        let crawler = FileCrawler()
+        let result = crawler.crawl(rootURL: tempDir)
+        let indexableNames = Set(result.indexableFiles.map { $0.lastPathComponent })
+
+        for ext in extensions {
+            XCTAssertTrue(
+                indexableNames.contains("photo.\(ext)"),
+                "Expected photo.\(ext) to be recognized as indexable"
+            )
+        }
     }
 
     func testCrawlSkipsHiddenFilesAndDirectories() throws {
