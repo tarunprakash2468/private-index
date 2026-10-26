@@ -6,6 +6,7 @@ _pi() {
         'index:Index documents in the specified directory'
         'watch:Run background watcher daemon for live folder monitoring'
         'search:Run semantic similarity search for a query'
+        'bench:Run on-device Apple Silicon performance benchmark'
         'stats:Show database stats and indexed document counts'
         'reset:Clear database and purge all vector embeddings'
         'help:Display this help message'
@@ -37,6 +38,11 @@ _pi() {
                         '--vector-weight[Vector weight for hybrid search]:weight:' \
                         '--keyword-weight[Keyword weight for hybrid search]:weight:' \
                         '*:query:'
+                    ;;
+                bench)
+                    _arguments \
+                        '--vectors[Number of synthetic vectors to evaluate]:vectors:' \
+                        '--json[Output metrics as machine-readable JSON]'
                     ;;
             esac
             ;;

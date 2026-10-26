@@ -3,7 +3,7 @@ _pi_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="index watch search stats reset help --help -h"
+    commands="index watch search bench stats reset help --help -h"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -22,6 +22,12 @@ _pi_completions() {
         search)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=( $(compgen -W "--limit --mode --vector-weight --keyword-weight" -- "$cur") )
+            fi
+            return 0
+            ;;
+        bench)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--vectors --json" -- "$cur") )
             fi
             return 0
             ;;

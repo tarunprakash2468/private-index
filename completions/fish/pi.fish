@@ -8,6 +8,7 @@ for cmd in pi private-index private-index-cli
     complete -c $cmd -n "__fish_use_subcommand" -a index -d "Index documents in directory"
     complete -c $cmd -n "__fish_use_subcommand" -a watch -d "Run background watcher daemon"
     complete -c $cmd -n "__fish_use_subcommand" -a search -d "Run semantic similarity search"
+    complete -c $cmd -n "__fish_use_subcommand" -a bench -d "Run on-device Apple Silicon performance benchmark"
     complete -c $cmd -n "__fish_use_subcommand" -a stats -d "Show database statistics"
     complete -c $cmd -n "__fish_use_subcommand" -a reset -d "Clear database and purge vectors"
     complete -c $cmd -n "__fish_use_subcommand" -a help -d "Display help message"
@@ -21,4 +22,6 @@ for cmd in pi private-index private-index-cli
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l mode -d "Search mode (hybrid, vector, keyword)" -r -a "hybrid vector keyword"
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l vector-weight -d "Vector similarity weight for hybrid search"
     complete -c $cmd -n "__fish_seen_subcommand_from search" -l keyword-weight -d "BM25 keyword weight for hybrid search"
+    complete -c $cmd -n "__fish_seen_subcommand_from bench" -l vectors -d "Number of synthetic vectors to evaluate"
+    complete -c $cmd -n "__fish_seen_subcommand_from bench" -l json -d "Output metrics as machine-readable JSON"
 end
