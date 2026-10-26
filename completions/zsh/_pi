@@ -8,6 +8,7 @@ _pi() {
         'search:Run semantic similarity search for a query'
         'bench:Run on-device Apple Silicon performance benchmark'
         'stats:Show database stats and indexed document counts'
+        'status:Show database stats and indexed document counts'
         'reset:Clear database and purge all vector embeddings'
         'help:Display this help message'
     )
@@ -29,7 +30,10 @@ _pi() {
                 watch)
                     _arguments \
                         '--install-launchagent[Install and load launchd LaunchAgent for 24/7 background operation]' \
-                        '1:directory:_directories'
+                        '--uninstall-launchagent[Unload and remove launchd LaunchAgent]' \
+                        '--no-download[Disable automatic downloading of evicted cloud files]' \
+                        '--min-free-space[Minimum free disk space buffer in GB before downloading cloud files]:gigabytes:' \
+                        '*:directory:_directories'
                     ;;
                 search)
                     _arguments \

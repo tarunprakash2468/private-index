@@ -61,6 +61,14 @@ public final class iCloudContainerManager: @unchecked Sendable {
     /// preventing recursive indexing loops.
     public func validateTargetFolder(_ folderURL: URL) throws {
         let standardizedFolder = folderURL.standardizedFileURL.path
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+
+        // Exempt the user's home directory since the internal database resides inside a hidden dot directory (.private-index)
+        // which is already excluded from crawling by FileCrawler.
+        if standardizedFolder == homePath {
+            return
+        }
+
         let standardizedDB = databaseURL.standardizedFileURL.path
         let standardizedContainer = containerURL.standardizedFileURL.path
 

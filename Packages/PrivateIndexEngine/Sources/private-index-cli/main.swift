@@ -22,7 +22,10 @@ func defaultDatabaseURL() -> URL {
     return dir.appendingPathComponent("index.sqlite")
 }
 
-func setupEngine() throws -> (VectorStore, IndexCoordinator) {
+func setupEngine(
+    downloadCloudFiles: Bool = true,
+    minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
+) throws -> (VectorStore, IndexCoordinator) {
     let dbURL = defaultDatabaseURL()
     let store = try VectorStore(at: dbURL)
     try store.createSchema()
@@ -38,7 +41,7 @@ func setupEngine() throws -> (VectorStore, IndexCoordinator) {
 
     let coordinator = IndexCoordinator(
         vectorStore: store,
-        fileCrawler: FileCrawler(),
+        fileCrawler: FileCrawler(downloadCloudFiles: downloadCloudFiles, minDiskBufferBytes: minBufferBytes),
         textChunker: TextChunker(windowSize: 500, overlap: 100),
         embeddingModel: model
     )
@@ -58,10 +61,10 @@ func printHelp() {
 
     \(ANSI.bold)COMMANDS:\(ANSI.reset)
         \(ANSI.green)index\(ANSI.reset) <path>            Index documents in the specified directory
-        \(ANSI.green)watch\(ANSI.reset) [path] [--install-launchagent|--uninstall-launchagent]  Run background watcher daemon
+        \(ANSI.green)watch\(ANSI.reset) [path...] [options]   Run background watcher daemon (multi-folder & cloud auto-discovery)
         \(ANSI.green)search\(ANSI.reset) <query> [options] Run search for a query (default mode: hybrid)
         \(ANSI.green)bench\(ANSI.reset) [options]         Run on-device Apple Silicon performance benchmark
-        \(ANSI.green)stats\(ANSI.reset)                   Show database stats and indexed document counts
+        \(ANSI.green)stats\(ANSI.reset) (or status)         Show database stats and indexed document counts
         \(ANSI.green)reset\(ANSI.reset)                   Clear database and purge all vector embeddings
         \(ANSI.green)help\(ANSI.reset)                    Display this help message
 
@@ -418,7 +421,7 @@ func runBench(vectorCount: Int, asJSON: Bool) async throws {
 
 // MARK: - Watch Daemon & LaunchAgent
 
-func installWatcherLaunchAgent(path: String) throws {
+func installWatcherLaunchAgent(paths: [String], noDownload: Bool = false) throws {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let launchAgentsDir = home.appendingPathComponent("Library/LaunchAgents", isDirectory: true)
     try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
@@ -437,6 +440,18 @@ func installWatcherLaunchAgent(path: String) throws {
     let logPath = logsDir.appendingPathComponent("watcher.log").path
     let errPath = logsDir.appendingPathComponent("watcher.err.log").path
 
+    var argsLines: [String] = [
+        "            <string>\(execPath)</string>",
+        "            <string>watch</string>"
+    ]
+    for p in paths {
+        argsLines.append("            <string>\(p)</string>")
+    }
+    if noDownload {
+        argsLines.append("            <string>--no-download</string>")
+    }
+    let argsArray = argsLines.joined(separator: "\n")
+
     let plistContent = """
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -446,9 +461,7 @@ func installWatcherLaunchAgent(path: String) throws {
         <string>com.privateindex.watcher</string>
         <key>ProgramArguments</key>
         <array>
-            <string>\(execPath)</string>
-            <string>watch</string>
-            <string>\(path)</string>
+    \(argsArray)
         </array>
         <key>RunAtLoad</key>
         <true/>
@@ -479,15 +492,20 @@ func installWatcherLaunchAgent(path: String) throws {
     try? loadProcess.run()
     loadProcess.waitUntilExit()
 
+    let pathsDisplay = paths.joined(separator: ", ")
     print("""
     \(ANSI.bold)\(ANSI.green)✔ LaunchAgent installed successfully!\(ANSI.reset)
       • Plist:        \(ANSI.dim)\(plistURL.path)\(ANSI.reset)
       • Executable:   \(ANSI.dim)\(execPath)\(ANSI.reset)
-      • Watch Path:   \(ANSI.cyan)\(path)\(ANSI.reset)
+      • Watch Target: \(ANSI.cyan)\(pathsDisplay)\(ANSI.reset)
       • Output Log:   \(ANSI.dim)\(logPath)\(ANSI.reset)
       • Error Log:    \(ANSI.dim)\(errPath)\(ANSI.reset)
       • Status:       Loaded into launchd (runs 24/7 headlessly on login)
     """)
+}
+
+func installWatcherLaunchAgent(path: String) throws {
+    try installWatcherLaunchAgent(paths: [path])
 }
 
 func uninstallWatcherLaunchAgent() throws {
@@ -525,28 +543,52 @@ func uninstallWatcherLaunchAgent() throws {
     """)
 }
 
-func runWatch(path: String) async throws {
-    let folderURL = URL(fileURLWithPath: path)
-    guard FileManager.default.fileExists(atPath: folderURL.path) else {
-        print("\(ANSI.red)Error:\(ANSI.reset) Target directory '\(path)' does not exist.")
+func runWatch(
+    paths: [String],
+    downloadCloudFiles: Bool = true,
+    minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
+) async throws {
+    guard !paths.isEmpty else {
+        print("\(ANSI.red)Error:\(ANSI.reset) No directories specified to watch.")
         exit(1)
     }
 
-    // Validate folder doesn't encompass database to prevent loop
+    var folderURLs: [URL] = []
+    let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
     let defaultDB = defaultDatabaseURL().standardizedFileURL.path
-    if defaultDB.hasPrefix(folderURL.standardizedFileURL.path) {
-        throw iCloudContainerManager.IsolationError.databaseContainedWithinTargetFolder(folderURL.path)
-    }
-    try iCloudContainerManager.shared.validateTargetFolder(folderURL)
 
-    let (store, coordinator) = try setupEngine()
+    for path in paths {
+        let expanded = (path as NSString).expandingTildeInPath
+        let folderURL = URL(fileURLWithPath: expanded)
+        guard FileManager.default.fileExists(atPath: folderURL.path) else {
+            print("\(ANSI.red)Error:\(ANSI.reset) Target directory '\(path)' does not exist.")
+            exit(1)
+        }
+
+        // Validate folder doesn't encompass database to prevent loop
+        // Home directory is exempted because the database resides in .private-index (hidden folder ignored by FileCrawler)
+        if folderURL.standardizedFileURL.path != homePath && defaultDB.hasPrefix(folderURL.standardizedFileURL.path) {
+            throw iCloudContainerManager.IsolationError.databaseContainedWithinTargetFolder(folderURL.path)
+        }
+        try iCloudContainerManager.shared.validateTargetFolder(folderURL)
+        folderURLs.append(folderURL)
+    }
+
+    let (store, coordinator) = try setupEngine(downloadCloudFiles: downloadCloudFiles, minBufferBytes: minBufferBytes)
     let powerAssertion = PowerAssertion(name: "Private Index CLI Watcher")
 
+    let cloudStatus = downloadCloudFiles
+        ? "\(ANSI.green)Enabled (Auto-download when free space >= \(minBufferBytes / (1024 * 1024 * 1024))GB / 10%)\(ANSI.reset)"
+        : "\(ANSI.yellow)Disabled (Cache Only)\(ANSI.reset)"
+
+    let targetsList = folderURLs.map { "  • \(ANSI.bold)\($0.path)\(ANSI.reset)" }.joined(separator: "\n")
+
     print("""
-    \(ANSI.bold)\(ANSI.cyan)Private Index Daemon\(ANSI.reset) — Live Folder Watching
-      • Monitoring:       \(ANSI.bold)\(folderURL.path)\(ANSI.reset)
+    \(ANSI.bold)\(ANSI.cyan)Private Index Daemon\(ANSI.reset) — Live Multi-Folder Watching
+    \(targetsList)
       • Debounce:         2.0s
       • Sleep Protection: Enabled (IOPMAssertion while indexing is active)
+      • Cloud Downloads:  \(cloudStatus)
       • Database:         \(ANSI.dim)\(defaultDatabaseURL().path)\(ANSI.reset)
 
     \(ANSI.dim)Press Ctrl+C to terminate cleanly.\(ANSI.reset)
@@ -582,18 +624,33 @@ func runWatch(path: String) async throws {
     print("\(ANSI.cyan)Running initial index pass...\(ANSI.reset)")
     powerAssertion.take()
     do {
-        let initialReport = try await coordinator.index(directoryURL: folderURL) { progress, message in
-            let pct = Int(progress * 100)
-            print("\r\(ANSI.dim)[\(pct)%] \(message)\(ANSI.reset)", terminator: "")
-            fflush(stdout)
+        var totalScanned = 0
+        var totalIndexed = 0
+        var totalSkipped = 0
+        var totalEvicted = 0
+        let startTime = Date()
+
+        for folderURL in folderURLs {
+            let label = folderURL.lastPathComponent.isEmpty ? folderURL.path : folderURL.lastPathComponent
+            let initialReport = try await coordinator.index(directoryURL: folderURL) { progress, message in
+                let pct = Int(progress * 100)
+                print("\r\(ANSI.dim)[\(label)] [\(pct)%] \(message)\(ANSI.reset)", terminator: "")
+                fflush(stdout)
+            }
+            totalScanned += initialReport.filesScanned
+            totalIndexed += initialReport.filesIndexed
+            totalSkipped += initialReport.filesSkipped
+            totalEvicted += initialReport.filesSkippedEvicted
         }
-        print("\r\u{001B}[K\(ANSI.green)✔ Initial scan complete:\(ANSI.reset) \(initialReport.filesScanned) scanned, \(initialReport.filesIndexed) indexed, \(initialReport.filesSkipped) skipped (\(initialReport.filesSkippedEvicted) dataless iCloud skipped) in \(String(format: "%.2f", initialReport.duration))s\n")
+        let totalDuration = Date().timeIntervalSince(startTime)
+        print("\r\u{001B}[K\(ANSI.green)✔ Initial scan complete:\(ANSI.reset) \(totalScanned) scanned, \(totalIndexed) indexed, \(totalSkipped) skipped (\(totalEvicted) cloud dataless processed) in \(String(format: "%.2f", totalDuration))s\n")
     } catch {
         print("\n\(ANSI.red)Initial indexing error:\(ANSI.reset) \(error.localizedDescription)")
     }
     powerAssertion.release()
 
     // Setup DirectoryWatcher with 2.0s debounce
+    let targetsToWatch = folderURLs
     let watcher = DirectoryWatcher(
         debounceInterval: 2.0,
         onPathsChanged: { changedPaths in
@@ -603,7 +660,11 @@ func runWatch(path: String) async throws {
             for p in changedPaths.prefix(5) {
                 let fileURL = URL(fileURLWithPath: p)
                 if FileCrawler.isDatalessICloudFile(at: fileURL) {
-                    print("  \(ANSI.dim)↷ Skipped dataless iCloud file: \(fileURL.lastPathComponent)\(ANSI.reset)")
+                    if downloadCloudFiles {
+                        print("  \(ANSI.cyan)⬇ Triggered cloud download: \(fileURL.lastPathComponent)\(ANSI.reset)")
+                    } else {
+                        print("  \(ANSI.dim)↷ Skipped dataless cloud file: \(fileURL.lastPathComponent)\(ANSI.reset)")
+                    }
                 } else {
                     print("  • \(ANSI.cyan)\(fileURL.lastPathComponent)\(ANSI.reset)")
                 }
@@ -618,9 +679,12 @@ func runWatch(path: String) async throws {
                 defer { powerAssertion.release() }
 
                 do {
-                    let report = try await coordinator.index(directoryURL: folderURL)
-                    if report.filesIndexed > 0 || report.filesDeleted > 0 {
-                        print("\(ANSI.green)✔ Incremental index updated:\(ANSI.reset) \(report.filesIndexed) indexed, \(report.filesDeleted) deleted, \(report.filesSkipped) unchanged (\(report.filesSkippedEvicted) dataless iCloud skipped) in \(String(format: "%.2f", report.duration))s")
+                    for folderURL in targetsToWatch {
+                        let report = try await coordinator.index(directoryURL: folderURL)
+                        if report.filesIndexed > 0 || report.filesDeleted > 0 {
+                            let label = folderURL.lastPathComponent.isEmpty ? folderURL.path : folderURL.lastPathComponent
+                            print("\(ANSI.green)✔ Incremental index updated [\(label)]:\(ANSI.reset) \(report.filesIndexed) indexed, \(report.filesDeleted) deleted, \(report.filesSkipped) unchanged in \(String(format: "%.2f", report.duration))s")
+                        }
                     }
                 } catch {
                     print("\(ANSI.red)Incremental indexing error:\(ANSI.reset) \(error.localizedDescription)")
@@ -630,8 +694,17 @@ func runWatch(path: String) async throws {
     )
 
     holder.watcher = watcher
-    watcher.start(watching: folderURL)
-    print("\(ANSI.green)✔ Directory watcher active.\(ANSI.reset) Listening for filesystem events...\n")
+    watcher.start(watching: targetsToWatch)
+    let locWord = folderURLs.count == 1 ? "location" : "locations"
+    print("\(ANSI.green)✔ Directory watcher active.\(ANSI.reset) Listening for filesystem events across \(folderURLs.count) \(locWord)...\n")
+}
+
+func runWatch(
+    path: String,
+    downloadCloudFiles: Bool = true,
+    minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
+) async throws {
+    try await runWatch(paths: [path], downloadCloudFiles: downloadCloudFiles, minBufferBytes: minBufferBytes)
 }
 
 // MARK: - Entry Point
@@ -652,33 +725,54 @@ case "watch":
         \(ANSI.bold)\(ANSI.cyan)pi watch\(ANSI.reset) — Run background watcher daemon for live folder monitoring
 
         \(ANSI.bold)USAGE:\(ANSI.reset)
-            pi watch [path] [options]
+            pi watch [path...] [options]
 
         \(ANSI.bold)ARGUMENTS:\(ANSI.reset)
-            <path>                   Directory to monitor (defaults to iCloud Drive documents)
+            [path...]                One or more directories to monitor (prompts interactively, defaults to All discovered locations)
 
         \(ANSI.bold)OPTIONS:\(ANSI.reset)
+            --no-download            Disable automatic downloading of evicted cloud files
+            --min-free-space <GB>    Minimum free disk space buffer before downloading cloud files (default: 10GB)
             --install-launchagent    Generate and load launchd LaunchAgent to run 24/7 headlessly on login
             --uninstall-launchagent  Unload and remove the background launchd LaunchAgent
             -h, --help               Display this help message
+
+        \(ANSI.bold)EXAMPLES:\(ANSI.reset)
+            pi watch
+            pi watch ~/Documents
+            pi watch ~/Documents ~/Downloads
+            pi watch --no-download
+            pi watch --install-launchagent
         """)
         exit(0)
     }
 
     var installLaunchAgent = false
     var uninstallLaunchAgent = false
-    var pathArg: String? = nil
+    var noDownload = false
+    var minFreeSpaceGB: Int64 = 10
+    var pathArgs: [String] = []
 
     var i = 2
     while i < args.count {
-        if args[i] == "--install-launchagent" {
+        let arg = args[i]
+        if arg == "--install-launchagent" {
             installLaunchAgent = true
             i += 1
-        } else if args[i] == "--uninstall-launchagent" || args[i] == "--remove-launchagent" {
+        } else if arg == "--uninstall-launchagent" || arg == "--remove-launchagent" {
             uninstallLaunchAgent = true
             i += 1
-        } else if !args[i].hasPrefix("-") && pathArg == nil {
-            pathArg = args[i]
+        } else if arg == "--no-download" || arg == "--skip-cloud-download" {
+            noDownload = true
+            i += 1
+        } else if arg == "--min-free-space", i + 1 < args.count, let gb = Int64(args[i + 1]) {
+            minFreeSpaceGB = gb
+            i += 2
+        } else if arg.hasPrefix("--min-free-space="), let gb = Int64(arg.dropFirst("--min-free-space=".count)) {
+            minFreeSpaceGB = gb
+            i += 1
+        } else if !arg.hasPrefix("-") {
+            pathArgs.append(arg)
             i += 1
         } else {
             i += 1
@@ -695,20 +789,52 @@ case "watch":
         }
     }
 
-    let resolvedPath: String
-    if let p = pathArg {
-        resolvedPath = (p as NSString).expandingTildeInPath
+    let resolvedPaths: [String]
+    if !pathArgs.isEmpty {
+        resolvedPaths = pathArgs.map { ($0 as NSString).expandingTildeInPath }
     } else {
-        resolvedPath = iCloudContainerManager.defaultUserDocumentsURL.path
+        let discovered = CloudStorageDetector.discoverLocations(includeHome: true)
+        print("\(ANSI.bold)\(ANSI.cyan)Discovered locations:\(ANSI.reset)")
+        for (idx, loc) in discovered.enumerated() {
+            let tag = loc.isCloud ? "\(ANSI.cyan)[Cloud]\(ANSI.reset) " : "\(ANSI.dim)[Local]\(ANSI.reset) "
+            print("  [\(idx + 1)] \(tag)\(ANSI.bold)\(loc.name)\(ANSI.reset): \(ANSI.dim)\(loc.url.path)\(ANSI.reset)")
+        }
+        print("\n\(ANSI.bold)Enter location(s) to watch\(ANSI.reset) [default: All]: ", terminator: "")
+        fflush(stdout)
+
+        if let line = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
+            let lower = line.lowercased()
+            if lower == "all" || lower == "a" {
+                resolvedPaths = discovered.map { $0.url.path }
+            } else {
+                let parts = line.components(separatedBy: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+                var selected: [String] = []
+                for p in parts {
+                    if let num = Int(p), num >= 1, num <= discovered.count {
+                        selected.append(discovered[num - 1].url.path)
+                    } else {
+                        selected.append((p as NSString).expandingTildeInPath)
+                    }
+                }
+                resolvedPaths = selected.isEmpty ? discovered.map { $0.url.path } : selected
+            }
+        } else {
+            resolvedPaths = discovered.map { $0.url.path }
+        }
     }
 
     if installLaunchAgent {
-        guard FileManager.default.fileExists(atPath: resolvedPath) else {
-            print("\(ANSI.red)Error:\(ANSI.reset) Directory '\(resolvedPath)' does not exist.")
-            exit(1)
+        for p in resolvedPaths {
+            guard FileManager.default.fileExists(atPath: p) else {
+                print("\(ANSI.red)Error:\(ANSI.reset) Directory '\(p)' does not exist.")
+                exit(1)
+            }
         }
         do {
-            try installWatcherLaunchAgent(path: resolvedPath)
+            try installWatcherLaunchAgent(paths: resolvedPaths, noDownload: noDownload)
             exit(0)
         } catch {
             print("\(ANSI.red)Error installing LaunchAgent:\(ANSI.reset) \(error.localizedDescription)")
@@ -716,9 +842,11 @@ case "watch":
         }
     }
 
+    let minBufferBytes = minFreeSpaceGB * 1024 * 1024 * 1024
+    let downloadPolicy = !noDownload
     Task {
         do {
-            try await runWatch(path: resolvedPath)
+            try await runWatch(paths: resolvedPaths, downloadCloudFiles: downloadPolicy, minBufferBytes: minBufferBytes)
         } catch {
             print("\(ANSI.red)Watcher error:\(ANSI.reset) \(error.localizedDescription)")
             exit(1)
@@ -959,13 +1087,14 @@ case "bench":
     }
     RunLoop.main.run()
 
-case "stats":
+case "stats", "status":
     if args.contains("-h") || args.contains("--help") || (args.count > 2 && args[2] == "help") {
         print("""
         \(ANSI.bold)\(ANSI.cyan)pi stats\(ANSI.reset) — Show database statistics and indexed document counts
 
         \(ANSI.bold)USAGE:\(ANSI.reset)
             pi stats
+            pi status
 
         \(ANSI.bold)OPTIONS:\(ANSI.reset)
             -h, --help    Display this help message

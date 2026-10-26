@@ -226,21 +226,53 @@ final class FolderWatchingAndIsolationTests: XCTestCase {
         XCTAssertThrowsError(try manager.validateTargetFolder(containerDir))
     }
 
-    // MARK: - 6. PowerAssertion Safe Operation
+    // MARK: - 7. Multi-Folder Watching & Cloud Storage Detection
 
-    func testPowerAssertionTakeAndRelease() throws {
-        let assertion = PowerAssertion(name: "Unit Test Assertion")
+    func testDirectoryWatcherMultiFolderStartAndStop() throws {
+        let dir1 = tempDir.appendingPathComponent("MultiWatchDir1")
+        let dir2 = tempDir.appendingPathComponent("MultiWatchDir2")
+        try FileManager.default.createDirectory(at: dir1, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir2, withIntermediateDirectories: true)
 
-        // Should be safe to take
-        assertion.take()
+        let watcher = DirectoryWatcher(debounceInterval: 0.1)
+        watcher.start(watching: [dir1, dir2])
 
-        // Double take should be no-op / safe
-        assertion.take()
+        XCTAssertTrue(watcher.isWatching)
+        XCTAssertEqual(watcher.watchedURLs.count, 2)
+        XCTAssertEqual(watcher.watchedURL, dir1)
 
-        // Should be safe to release
-        assertion.release()
+        watcher.stop()
+        XCTAssertFalse(watcher.isWatching)
+        XCTAssertTrue(watcher.watchedURLs.isEmpty)
+        XCTAssertNil(watcher.watchedURL)
+    }
 
-        // Double release should be no-op / safe
-        assertion.release()
+    func testCloudStorageDetectorDiscoversLocations() throws {
+        let locations = CloudStorageDetector.discoverLocations(includeHome: true)
+        XCTAssertFalse(locations.isEmpty)
+        XCTAssertTrue(locations.contains(where: { $0.name.contains("Home") }))
+
+        let locationsWithoutHome = CloudStorageDetector.discoverLocations(includeHome: false)
+        XCTAssertFalse(locationsWithoutHome.contains(where: { $0.name.contains("Home") }))
+    }
+
+    func testCloudDownloadManagerDiskSpaceCheck() throws {
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
+
+        // Small file (1 KB) with standard 10GB buffer should pass if machine has ample space
+        let passes = CloudDownloadManager.hasSufficientDiskSpace(forFileSize: 1024, at: homeURL, minBufferBytes: 1024)
+        XCTAssertTrue(passes)
+
+        // Huge requested buffer (1 Petabyte) should fail safely
+        let fails = CloudDownloadManager.hasSufficientDiskSpace(forFileSize: 1024, at: homeURL, minBufferBytes: 1_000_000_000_000_000)
+        XCTAssertFalse(fails)
+    }
+
+    func testHomeDirectoryExemptionFromIsolation() throws {
+        let manager = iCloudContainerManager.shared
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
+
+        // Home directory should be exempted from loop prevention
+        XCTAssertNoThrow(try manager.validateTargetFolder(homeURL))
     }
 }

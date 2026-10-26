@@ -18,6 +18,8 @@ public struct FileCrawler: Sendable {
 
     /// The maximum directory recursion depth for this crawler instance.
     public let maxDepth: Int
+    public let downloadCloudFiles: Bool
+    public let minDiskBufferBytes: Int64
 
     // MARK: - Supported File Types
 
@@ -98,8 +100,14 @@ public struct FileCrawler: Sendable {
 
     // MARK: - Initialization
 
-    public init(maxDepth: Int = Self.defaultMaxDepth) {
+    public init(
+        maxDepth: Int = Self.defaultMaxDepth,
+        downloadCloudFiles: Bool = true,
+        minDiskBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
+    ) {
         self.maxDepth = maxDepth
+        self.downloadCloudFiles = downloadCloudFiles
+        self.minDiskBufferBytes = minDiskBufferBytes
     }
 
     // MARK: - Dataless / Evicted iCloud Check
@@ -292,9 +300,15 @@ public struct FileCrawler: Sendable {
                     continue
                 }
 
-                // Check iCloud download status to avoid blocking on evicted files
+                // Check iCloud / FileProvider download status to avoid blocking on evicted files
                 let checkURL = isSymbolicLink ? fileURL.resolvingSymlinksInPath() : fileURL
                 if Self.isDatalessICloudFile(at: checkURL) {
+                    let fileSize: Int64 = (try? checkURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { Int64($0) } ?? 0
+                    if downloadCloudFiles && CloudDownloadManager.hasSufficientDiskSpace(forFileSize: fileSize, at: checkURL, minBufferBytes: minDiskBufferBytes) {
+                        // Request background download from FileProvider / iCloud.
+                        // When downloaded, FSEvents triggers an incremental index pass.
+                        try? FileManager.default.startDownloadingUbiquitousItem(at: checkURL)
+                    }
                     evicted.append(fileURL)
                     continue
                 }
