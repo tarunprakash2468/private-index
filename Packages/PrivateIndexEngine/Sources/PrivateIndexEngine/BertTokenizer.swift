@@ -204,7 +204,6 @@ public final class BertTokenizer: @unchecked Sendable {
 
         while start < chars.count {
             var end = chars.count
-            var curSubword: String? = nil
             var curID: Int32? = nil
 
             while start < end {
@@ -214,7 +213,6 @@ public final class BertTokenizer: @unchecked Sendable {
                 }
 
                 if let id = vocab[substring] {
-                    curSubword = substring
                     curID = id
                     break
                 }
