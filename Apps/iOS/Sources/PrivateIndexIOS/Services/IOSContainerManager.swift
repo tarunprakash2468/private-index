@@ -52,19 +52,11 @@ public final class IOSContainerManager: @unchecked Sendable {
 
         self.activeSecurityScopedURL = url
 
-        #if os(iOS)
         let bookmarkData = try url.bookmarkData(
             options: .minimalBookmark,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        #else
-        let bookmarkData = try url.bookmarkData(
-            options: .withSecurityScope,
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
-        #endif
 
         UserDefaults.standard.set(bookmarkData, forKey: bookmarkStorageKey)
     }
@@ -77,21 +69,12 @@ public final class IOSContainerManager: @unchecked Sendable {
 
         var isStale = false
         do {
-            #if os(iOS)
             let resolvedURL = try URL(
                 resolvingBookmarkData: bookmarkData,
                 options: .withoutUI,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
-            #else
-            let resolvedURL = try URL(
-                resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            #endif
 
             if resolvedURL.startAccessingSecurityScopedResource() {
                 self.activeSecurityScopedURL = resolvedURL
