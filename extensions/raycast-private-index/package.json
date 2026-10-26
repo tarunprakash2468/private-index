@@ -1,0 +1,85 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "private-index",
+  "title": "Private Index",
+  "description": "Search local documents and notes semantically using on-device AI",
+  "icon": "extension-icon.png",
+  "author": "tarunprakash",
+  "categories": [
+    "Productivity",
+    "System"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search",
+      "title": "Search Private Index",
+      "description": "Search local documents and notes semantically using on-device AI",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "executablePath",
+      "title": "Executable Path",
+      "description": "Path to pi binary (default: /opt/homebrew/bin/pi, fallback to /usr/local/bin/pi or $PATH)",
+      "type": "textfield",
+      "required": false,
+      "default": "/opt/homebrew/bin/pi",
+      "placeholder": "/opt/homebrew/bin/pi"
+    },
+    {
+      "name": "searchMode",
+      "title": "Search Mode",
+      "description": "Search retrieval mode",
+      "type": "dropdown",
+      "required": false,
+      "default": "hybrid",
+      "data": [
+        {
+          "title": "Hybrid (Semantic + Keyword)",
+          "value": "hybrid"
+        },
+        {
+          "title": "Vector (Semantic Embeddings)",
+          "value": "vector"
+        },
+        {
+          "title": "Keyword (BM25 Full-Text)",
+          "value": "keyword"
+        }
+      ]
+    },
+    {
+      "name": "minSimilarity",
+      "title": "Minimum Similarity",
+      "description": "Minimum vector similarity percentage (default: 35%)",
+      "type": "textfield",
+      "required": false,
+      "default": "35%",
+      "placeholder": "35%"
+    },
+    {
+      "name": "resultLimit",
+      "title": "Result Limit",
+      "description": "Number of results to display (default: 15)",
+      "type": "textfield",
+      "required": false,
+      "default": "15",
+      "placeholder": "15"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.93.0",
+    "@raycast/utils": "^1.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.3"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop"
+  }
+}

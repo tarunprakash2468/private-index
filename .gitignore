@@ -46,3 +46,7 @@ build/
 
 # === User documents (never commit) ===
 UserDocuments/
+
+# === Node / Raycast ===
+node_modules/
+.raycast/
