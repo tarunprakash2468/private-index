@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.7.0...private-index-v0.8.0) (2026-10-26)
+
+
+### Features
+
+* **cli:** add multi-location cloud watching and interactive selection prompt ([#24](https://github.com/tarunprakash2468/private-index/issues/24)) ([98532cb](https://github.com/tarunprakash2468/private-index/commit/98532cbdd998deb53042a5156cb1673a608b16f8))
+
 ## [0.7.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.6.0...private-index-v0.7.0) (2026-10-26)
 
 
