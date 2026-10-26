@@ -158,6 +158,10 @@ swift run --scratch-path /tmp/private-index-build private-index-cli index ~/Docu
 # Search documents
 swift run --scratch-path /tmp/private-index-build private-index-cli search "machine learning privacy" --limit 5
 
+# Run on-device performance benchmark
+swift run --scratch-path /tmp/private-index-build private-index-cli bench
+swift run --scratch-path /tmp/private-index-build private-index-cli bench --vectors 5000 --json
+
 # View index statistics
 swift run --scratch-path /tmp/private-index-build private-index-cli stats
 
