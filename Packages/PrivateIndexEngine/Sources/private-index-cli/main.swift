@@ -71,6 +71,7 @@ func printHelp() {
         --min-similarity <pct>          Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)
         --vector-weight <W>             Vector similarity weight for RRF in hybrid mode (default: 0.5)
         --keyword-weight <W>            BM25 keyword weight for RRF in hybrid mode (default: 0.5)
+        --json                          Output results as strict JSON array (suppresses banners and formatting)
 
     \(ANSI.bold)BENCHMARK OPTIONS:\(ANSI.reset)
         --vectors <N>                   Number of vectors for insertion/retrieval test (default: 1,000)
@@ -85,6 +86,7 @@ func printHelp() {
         pi search "33 bond st" --min-similarity 25%
         pi search "ERR_404_NOT_FOUND" --mode keyword
         pi search "Apple Neural Engine" --mode hybrid --limit 5
+        pi search "salary" --json
         pi bench
         pi bench --vectors 5000
         pi bench --json
@@ -135,17 +137,55 @@ func parseSimilarity(_ raw: String) -> Float {
     return max(0.0, min(1.0, val))
 }
 
+struct SearchJSONResult: Encodable {
+    let id: Int64
+    let filePath: String
+    let fileName: String
+    let matchType: String
+    let score: Double
+    let confidence: Int
+    let distance: Double
+    let snippet: String
+    let mtime: Int64
+}
+
+func outputJSONError(_ message: String, code: Int32 = 1) -> Never {
+    let dict = ["error": message]
+    if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+       let str = String(data: data, encoding: .utf8) {
+        FileHandle.standardError.write(Data((str + "\n").utf8))
+    } else {
+        FileHandle.standardError.write(Data("{\"error\": \"\(message)\"}\n".utf8))
+    }
+    exit(code)
+}
+
 func runSearch(
     query: String,
     limit: Int,
     mode: SearchMode = .hybrid,
     vectorWeight: Float = 0.5,
     keywordWeight: Float = 0.5,
-    minSimilarity: Float = 0.35
+    minSimilarity: Float = 0.35,
+    isJSON: Bool = false
 ) async throws {
-    let simPct = Int(round(minSimilarity * 100))
-    let simInfo = mode == .keyword ? "" : ", min-similarity: \(simPct)%"
-    print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit)\(simInfo))\(ANSI.reset)\n")
+    let dbURL = defaultDatabaseURL()
+    guard FileManager.default.fileExists(atPath: dbURL.path) else {
+        let msg = "Database not found at '\(dbURL.path)'. Please index documents first using `pi index <directory>`."
+        if isJSON {
+            outputJSONError(msg)
+        } else {
+            print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
+            exit(1)
+        }
+    }
+
+    if !isJSON {
+        let simPct = Int(round(minSimilarity * 100))
+        let simInfo = mode == .keyword ? "" : ", min-similarity: \(simPct)%"
+        print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit)\(simInfo))\(ANSI.reset)\n")
+    }
+
     let (store, coordinator) = try setupEngine()
 
     let startTime = Date()
@@ -158,6 +198,57 @@ func runSearch(
         minSimilarity: minSimilarity
     )
     let elapsed = Date().timeIntervalSince(startTime) * 1000
+
+    if isJSON {
+        if results.isEmpty {
+            print("[]")
+            return
+        }
+
+        var jsonItems: [SearchJSONResult] = []
+        for r in results {
+            let fileName = URL(fileURLWithPath: r.filePath).lastPathComponent
+
+            var mtime: Int64 = 0
+            if let fileRecord = try? store.getFile(byPath: r.filePath) {
+                mtime = Int64(fileRecord.mtime.timeIntervalSince1970)
+            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: r.filePath),
+                      let modDate = attrs[.modificationDate] as? Date {
+                mtime = Int64(modDate.timeIntervalSince1970)
+            }
+
+            let confidence: Int
+            if r.matchType == "vector" {
+                confidence = max(0, min(100, Int(round((1.0 - r.distance) * 100))))
+            } else {
+                confidence = max(0, min(100, Int(round(r.score * 100))))
+            }
+
+            let roundedScore = Double((Double(r.score) * 10000).rounded() / 10000)
+            let roundedDistance = Double((Double(r.distance) * 10000).rounded() / 10000)
+            let snippet = r.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            jsonItems.append(SearchJSONResult(
+                id: r.id,
+                filePath: r.filePath,
+                fileName: fileName,
+                matchType: r.matchType,
+                score: roundedScore,
+                confidence: confidence,
+                distance: roundedDistance,
+                snippet: snippet,
+                mtime: mtime
+            ))
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(jsonItems)
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print(jsonString)
+        }
+        return
+    }
 
     if results.isEmpty {
         let indexedCount = (try? store.getAllIndexedFiles().count) ?? 0
@@ -684,6 +775,7 @@ case "search":
             --min-similarity <pct>           Minimum vector similarity percentage (default: 35%, e.g. 40 or 40%)
             --vector-weight <W>              Vector similarity weight for RRF fusion (default: 0.5)
             --keyword-weight <W>             BM25 keyword weight for RRF fusion (default: 0.5)
+            --json                           Output results as strict JSON array (suppresses banners and formatting)
             -h, --help                       Display this help message
 
         \(ANSI.bold)EXAMPLES:\(ANSI.reset)
@@ -691,13 +783,9 @@ case "search":
             pi search "33 bond st" --min-similarity 25%
             pi search "meeting notes" --mode hybrid --limit 5
             pi search "ERR_404_NOT_FOUND" --mode keyword
+            pi search "salary" --json
         """)
         exit(0)
-    }
-
-    guard args.count > 2 else {
-        print("\(ANSI.red)Error:\(ANSI.reset) Please specify a search query. e.g. `pi search \"privacy machine learning\"`")
-        exit(1)
     }
 
     var limit = 10
@@ -706,11 +794,15 @@ case "search":
     var keywordWeight: Float = 0.5
     var minSimilarity: Float = 0.35
     var queryTerms: [String] = []
+    var isJSON = false
 
     var i = 2
     while i < args.count {
         let arg = args[i]
-        if arg == "--limit", i + 1 < args.count, let parsedLimit = Int(args[i + 1]) {
+        if arg == "--json" {
+            isJSON = true
+            i += 1
+        } else if arg == "--limit", i + 1 < args.count, let parsedLimit = Int(args[i + 1]) {
             limit = parsedLimit
             i += 2
         } else if arg.hasPrefix("--limit="), let parsedLimit = Int(arg.dropFirst("--limit=".count)) {
@@ -719,16 +811,26 @@ case "search":
         } else if arg == "--mode", i + 1 < args.count {
             let modeRaw = args[i + 1].lowercased()
             guard let parsedMode = SearchMode(rawValue: modeRaw) else {
-                print("\(ANSI.red)Error:\(ANSI.reset) Invalid mode '\(args[i + 1])'. Valid modes: hybrid, vector, keyword.")
-                exit(1)
+                let msg = "Invalid mode '\(args[i + 1])'. Valid modes: hybrid, vector, keyword."
+                if isJSON || args.contains("--json") {
+                    outputJSONError(msg)
+                } else {
+                    print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
+                    exit(1)
+                }
             }
             mode = parsedMode
             i += 2
         } else if arg.hasPrefix("--mode=") {
             let modeRaw = String(arg.dropFirst("--mode=".count)).lowercased()
             guard let parsedMode = SearchMode(rawValue: modeRaw) else {
-                print("\(ANSI.red)Error:\(ANSI.reset) Invalid mode '\(modeRaw)'. Valid modes: hybrid, vector, keyword.")
-                exit(1)
+                let msg = "Invalid mode '\(modeRaw)'. Valid modes: hybrid, vector, keyword."
+                if isJSON || args.contains("--json") {
+                    outputJSONError(msg)
+                } else {
+                    print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
+                    exit(1)
+                }
             }
             mode = parsedMode
             i += 1
@@ -761,12 +863,23 @@ case "search":
         }
     }
 
-    let query = queryTerms.joined(separator: " ")
+    let query = queryTerms.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else {
+        let msg = "Please specify a search query. e.g. `pi search \"privacy machine learning\"`"
+        if isJSON {
+            outputJSONError(msg)
+        } else {
+            print("\(ANSI.red)Error:\(ANSI.reset) \(msg)")
+            exit(1)
+        }
+    }
+
     let searchLimit = limit
     let searchMode = mode
     let searchVectorWeight = vectorWeight
     let searchKeywordWeight = keywordWeight
     let searchMinSimilarity = minSimilarity
+    let searchIsJSON = isJSON
 
     Task {
         do {
@@ -776,12 +889,17 @@ case "search":
                 mode: searchMode,
                 vectorWeight: searchVectorWeight,
                 keywordWeight: searchKeywordWeight,
-                minSimilarity: searchMinSimilarity
+                minSimilarity: searchMinSimilarity,
+                isJSON: searchIsJSON
             )
             exit(0)
         } catch {
-            print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
-            exit(1)
+            if searchIsJSON {
+                outputJSONError(error.localizedDescription)
+            } else {
+                print("\(ANSI.red)Search error:\(ANSI.reset) \(error.localizedDescription)")
+                exit(1)
+            }
         }
     }
     RunLoop.main.run()

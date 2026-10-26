@@ -70,11 +70,36 @@ pi search "ERR_AUTH_TOKEN_401" --mode keyword
 pi search "neural network acceleration" --mode vector
 pi search "on-device inference" --mode hybrid --vector-weight 0.7 --keyword-weight 0.3
 
+# Output results as strict JSON array for scripting, automation, or extensions
+pi search "salary" --json
+
 # Check index statistics
 pi stats
 ```
 
 *Tab autocompletions for **Zsh**, **Bash**, and **Fish** are automatically configured when installed via Homebrew.*
+
+### 🔍 Raycast Extension (`Search Private Index`)
+
+Private Index features a native [Raycast](https://www.raycast.com/) extension for lightning-fast search-as-you-type right from your Raycast launcher:
+
+- **Search-as-you-type**: Instant hybrid semantic + keyword document retrieval.
+- **Visual indicators**: File icon previews, parent directories, match type badges (`[hybrid]`, `[vector]`, `[keyword]`), and confidence percentages (`100% match`, `85% match`).
+- **Markdown detail pane**: Full text snippet preview in a clean quote block alongside metadata (file path, file size, last modified date, raw score).
+- **Fast keyboard actions**:
+  - <kbd>↵</kbd> Open file in default macOS application
+  - <kbd>⌘ ↵</kbd> Reveal file in Finder
+  - <kbd>Space</kbd> macOS Quick Look preview for PDFs, text, and images
+  - <kbd>⌘ C</kbd> Copy text snippet to clipboard
+  - <kbd>⌘ ⇧ C</kbd> Copy full file path to clipboard
+
+To build and run the Raycast extension locally:
+```bash
+cd extensions/raycast-private-index
+npm install
+npm run build
+npm run dev
+```
 
 ---
 

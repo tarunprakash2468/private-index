@@ -35,8 +35,10 @@ _pi() {
                     _arguments \
                         '--mode[Search mode (hybrid, vector, keyword)]:mode:(hybrid vector keyword)' \
                         '--limit[Maximum number of results to return]:limit:' \
+                        '--min-similarity[Minimum vector similarity percentage]:percentage:' \
                         '--vector-weight[Vector weight for hybrid search]:weight:' \
                         '--keyword-weight[Keyword weight for hybrid search]:weight:' \
+                        '--json[Output results as strict JSON array]' \
                         '*:query:'
                     ;;
                 bench)
