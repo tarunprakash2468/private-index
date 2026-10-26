@@ -221,9 +221,7 @@ public final class BertTokenizer: @unchecked Sendable {
                 end -= 1
             }
 
-            if curSubword == nil, let id = curID {
-                subwords.append(id)
-            } else if let id = curID {
+            if let id = curID {
                 subwords.append(id)
                 start = end
             } else {

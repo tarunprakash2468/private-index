@@ -1,4 +1,0 @@
-import Foundation
-import PrivateIndexEngine
-
-public typealias iCloudContainerManager = PrivateIndexEngine.iCloudContainerManager
