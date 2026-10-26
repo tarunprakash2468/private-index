@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.0...private-index-v0.8.1) (2026-10-26)
+
+
+### CI/CD & Automation
+
+* ignore formula, markdown, and license changes in CI workflow ([e3dbb9d](https://github.com/tarunprakash2468/private-index/commit/e3dbb9dcad03d3f2b13229ee857350f72f529a31))
+* ignore release-please manifest and config files in CI workflow ([ec211df](https://github.com/tarunprakash2468/private-index/commit/ec211dfd03cc621a561a914f897426b50971d34a))
+
 ## [0.8.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.7.0...private-index-v0.8.0) (2026-10-26)
 
 
