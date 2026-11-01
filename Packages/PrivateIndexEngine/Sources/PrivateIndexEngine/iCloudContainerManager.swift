@@ -27,7 +27,8 @@ public final class iCloudContainerManager: Sendable {
 
     /// Resolves the app container URL (either iCloud ubiquity container or local Application Support fallback).
     public var containerURL: URL {
-        if let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: Self.ubiquityContainerIdentifier) {
+        if let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: Self.ubiquityContainerIdentifier) ??
+                             FileManager.default.url(forUbiquityContainerIdentifier: nil) {
             return ubiquityURL
         }
         // Fallback for development, simulator, or machines without iCloud logged in
@@ -49,6 +50,32 @@ public final class iCloudContainerManager: Sendable {
         #endif
         try? FileManager.default.createDirectory(at: localContainer, withIntermediateDirectories: true)
         return localContainer
+    }
+
+    /// Whether the active container is the private iCloud Ubiquity container.
+    public var isUsingUbiquityContainer: Bool {
+        #if os(macOS)
+        let ubiquityFolderName = "iCloud~" + Self.ubiquityContainerIdentifier
+            .replacingOccurrences(of: "iCloud.", with: "")
+            .replacingOccurrences(of: ".", with: "~")
+        let cloudPath = ("~/Library/Mobile Documents/" + ubiquityFolderName as NSString).expandingTildeInPath
+        return FileManager.default.url(forUbiquityContainerIdentifier: Self.ubiquityContainerIdentifier) != nil ||
+               FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil ||
+               FileManager.default.fileExists(atPath: cloudPath)
+        #else
+        return FileManager.default.ubiquityIdentityToken != nil &&
+               (FileManager.default.url(forUbiquityContainerIdentifier: Self.ubiquityContainerIdentifier) != nil ||
+                FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil)
+        #endif
+    }
+
+    /// Human-readable diagnostic description of the container storage location.
+    public var containerTypeDescription: String {
+        if isUsingUbiquityContainer {
+            return "iCloud Ubiquity (\(Self.ubiquityContainerIdentifier))"
+        } else {
+            return "Local Sandboxed Storage"
+        }
     }
 
     /// The isolated database file URL.

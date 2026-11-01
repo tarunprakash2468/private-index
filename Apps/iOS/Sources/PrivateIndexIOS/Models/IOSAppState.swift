@@ -65,11 +65,31 @@ public final class IOSAppState {
     // MARK: - Engine Setup
 
     private func setupEngine() {
+        let dbURL = IOSContainerManager.shared.databaseURL
+
+        // If this is an iCloud ubiquitous item, verify download state before opening
+        if FileManager.default.isUbiquitousItem(at: dbURL) {
+            let keys: Set<URLResourceKey> = [
+                .ubiquitousItemDownloadingStatusKey,
+                .ubiquitousItemIsDownloadingKey
+            ]
+            if let values = try? dbURL.resourceValues(forKeys: keys) {
+                if values.ubiquitousItemDownloadingStatus != .current {
+                    // Item is dataless or still actively downloading — do not open placeholder with SQLite!
+                    self.vectorStore?.close()
+                    self.vectorStore = nil
+                    self.coordinator = nil
+                    self.syncStatusMessage = "Database is downloading from iCloud. Tap 'Sync & Check Database' to check status."
+                    return
+                }
+            }
+        }
+
         do {
-            let dbURL = IOSContainerManager.shared.databaseURL
             let instance = try EngineFactory.create(databaseURL: dbURL)
             self.vectorStore = instance.store
             self.coordinator = instance.coordinator
+            self.errorMessage = nil
 
             refreshIndexedFiles()
         } catch {
@@ -253,15 +273,23 @@ public final class IOSAppState {
         isSyncingDatabase = true
         syncStatusMessage = "Checking iCloud container..."
 
-        let dbURL = IOSContainerManager.shared.databaseURL
-
-        guard FileManager.default.fileExists(atPath: dbURL.path) else {
-            syncStatusMessage = "Database not found in container. Index a folder or allow Mac to sync."
+        // 1. Verify iCloud account status
+        guard FileManager.default.ubiquityIdentityToken != nil else {
+            syncStatusMessage = "iCloud is not signed in or enabled for Private Index. Go to iPhone Settings -> Apple Account -> iCloud -> Saved to iCloud to enable."
             isSyncingDatabase = false
             return
         }
 
-        // Check if iCloud has a newer dataless version or active download
+        let dbURL = IOSContainerManager.shared.databaseURL
+        let isUbiquitous = FileManager.default.isUbiquitousItem(at: dbURL)
+
+        guard FileManager.default.fileExists(atPath: dbURL.path) || isUbiquitous else {
+            syncStatusMessage = "Database not found in container yet. Waiting for initial upload from Mac."
+            isSyncingDatabase = false
+            return
+        }
+
+        // 2. Query iCloud ubiquitous download status
         let keys: Set<URLResourceKey> = [
             .ubiquitousItemDownloadingStatusKey,
             .ubiquitousItemIsDownloadingKey,
@@ -271,15 +299,26 @@ public final class IOSAppState {
 
         if let values = try? dbURL.resourceValues(forKeys: keys) {
             if values.ubiquitousItemDownloadingStatus == .notDownloaded {
-                syncStatusMessage = "Downloading latest index.sqlite from iCloud..."
-                try? FileManager.default.startDownloadingUbiquitousItem(at: dbURL)
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                syncStatusMessage = "Triggering iCloud download of index.sqlite (39.39 GB)..."
+                do {
+                    try FileManager.default.startDownloadingUbiquitousItem(at: dbURL)
+                    syncStatusMessage = "iCloud download started for index.sqlite (39.39 GB). Mac is uploading / phone downloading. Keep iPhone connected to Wi-Fi."
+                } catch {
+                    syncStatusMessage = "iCloud download trigger: \(error.localizedDescription)"
+                }
+                isSyncingDatabase = false
+                return
             } else if values.ubiquitousItemIsDownloading == true {
-                syncStatusMessage = "iCloud is currently downloading the latest index.sqlite..."
+                syncStatusMessage = "Downloading index.sqlite from iCloud... Keep iPhone on Wi-Fi."
+                isSyncingDatabase = false
+                return
+            } else if values.ubiquitousItemDownloadingStatus == .downloaded {
+                syncStatusMessage = "Updating to latest iCloud version..."
+                try? FileManager.default.startDownloadingUbiquitousItem(at: dbURL)
             }
         }
 
-        // Reconnect vector store to pick up any changes synced from Mac
+        // 3. Connect vector store once download is current
         setupEngine()
 
         let count = indexedFiles.count
@@ -298,7 +337,11 @@ public final class IOSAppState {
             mtimeStr = df.string(from: mtime)
         }
 
-        syncStatusMessage = "Database synced! (\(count) files indexed, \(sizeStr), modified: \(mtimeStr))"
+        if count > 0 {
+            syncStatusMessage = "Database synced! (\(count) files indexed, \(sizeStr), modified: \(mtimeStr))"
+        } else {
+            syncStatusMessage = "Database connected (\(sizeStr), modified: \(mtimeStr)). No indexed files found."
+        }
         isSyncingDatabase = false
     }
 }

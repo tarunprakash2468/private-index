@@ -32,6 +32,16 @@ public final class IOSContainerManager: @unchecked Sendable {
         iCloudContainerManager.shared.databaseURL
     }
 
+    /// Whether the active container is the private iCloud Ubiquity container.
+    public var isUsingUbiquityContainer: Bool {
+        iCloudContainerManager.shared.isUsingUbiquityContainer
+    }
+
+    /// Diagnostic description of where data is stored.
+    public var containerTypeDescription: String {
+        iCloudContainerManager.shared.containerTypeDescription
+    }
+
     /// Validates that the selected folder doesn't encompass the database file to prevent indexing loops.
     public func validateTargetFolder(_ folderURL: URL) throws {
         try iCloudContainerManager.shared.validateTargetFolder(folderURL)
