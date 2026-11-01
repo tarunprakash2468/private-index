@@ -32,6 +32,15 @@ public final class iCloudContainerManager: Sendable {
         }
         // Fallback for development, simulator, or machines without iCloud logged in
         #if os(macOS)
+        // When running in CLI or unsandboxed processes, check if macOS provisioned the Ubiquity folder in ~/Library/Mobile Documents
+        let ubiquityFolderName = "iCloud~" + Self.ubiquityContainerIdentifier
+            .replacingOccurrences(of: "iCloud.", with: "")
+            .replacingOccurrences(of: ".", with: "~")
+        let cloudPath = ("~/Library/Mobile Documents/" + ubiquityFolderName as NSString).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: cloudPath) {
+            return URL(fileURLWithPath: cloudPath, isDirectory: true)
+        }
+
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let localContainer = appSupport.appendingPathComponent("PrivateIndex", isDirectory: true)
         #else

@@ -2,10 +2,17 @@ import Foundation
 import PrivateIndexEngine
 
 func defaultDatabaseURL() -> URL {
+    let cloudDB = iCloudContainerManager.shared.databaseURL
+    if FileManager.default.fileExists(atPath: cloudDB.path) {
+        return cloudDB
+    }
     let home = FileManager.default.homeDirectoryForCurrentUser
     let dir = home.appendingPathComponent(".private-index", isDirectory: true)
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    return dir.appendingPathComponent("index.sqlite")
+    let legacyDB = dir.appendingPathComponent("index.sqlite")
+    if FileManager.default.fileExists(atPath: legacyDB.path) {
+        return legacyDB
+    }
+    return cloudDB
 }
 
 func setupEngine(
