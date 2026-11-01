@@ -12,7 +12,7 @@
 		010000010000000300000001 /* IOSContainerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000300000002 /* IOSContainerManager.swift */; };
 		010000010000000400000001 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000400000002 /* MainTabView.swift */; };
 		010000010000000500000001 /* IOSSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000500000002 /* IOSSearchView.swift */; };
-		010000010000000600000001 /* IOSDocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000600000002 /* IOSDocumentsView.swift */; };
+		010000010000000600000001 /* IOSSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000600000002 /* IOSSourcesView.swift */; };
 		010000010000000700000001 /* IOSSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000010000000700000002 /* IOSSettingsView.swift */; };
 		010000010000000800000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 010000010000000800000002 /* Assets.xcassets */; };
 		010000020000000100000003 /* PrivateIndexEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 010000020000000100000002 /* PrivateIndexEngine */; };
@@ -24,7 +24,7 @@
 		010000010000000300000002 /* IOSContainerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSContainerManager.swift; sourceTree = "<group>"; };
 		010000010000000400000002 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		010000010000000500000002 /* IOSSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSearchView.swift; sourceTree = "<group>"; };
-		010000010000000600000002 /* IOSDocumentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSDocumentsView.swift; sourceTree = "<group>"; };
+		010000010000000600000002 /* IOSSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSourcesView.swift; sourceTree = "<group>"; };
 		010000010000000700000002 /* IOSSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSettingsView.swift; sourceTree = "<group>"; };
 		010000010000000800000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		010000010000000900000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -86,7 +86,7 @@
 			children = (
 				010000010000000400000002 /* MainTabView.swift */,
 				010000010000000500000002 /* IOSSearchView.swift */,
-				010000010000000600000002 /* IOSDocumentsView.swift */,
+				010000010000000600000002 /* IOSSourcesView.swift */,
 				010000010000000700000002 /* IOSSettingsView.swift */,
 			);
 			path = Views;
@@ -188,7 +188,7 @@
 				010000010000000300000001 /* IOSContainerManager.swift in Sources */,
 				010000010000000400000001 /* MainTabView.swift in Sources */,
 				010000010000000500000001 /* IOSSearchView.swift in Sources */,
-				010000010000000600000001 /* IOSDocumentsView.swift in Sources */,
+				010000010000000600000001 /* IOSSourcesView.swift in Sources */,
 				010000010000000700000001 /* IOSSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

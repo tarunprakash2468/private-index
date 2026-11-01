@@ -16,102 +16,23 @@ public struct IOSSettingsView: View {
         self.appState = IOSAppState.shared
     }
 
-    private var databaseSizeString: String {
-        let dbURL = IOSContainerManager.shared.databaseURL
-        let keys: Set<URLResourceKey> = [
-            .ubiquitousItemDownloadingStatusKey,
-            .ubiquitousItemIsDownloadingKey,
-            .fileSizeKey
-        ]
-        if let values = try? dbURL.resourceValues(forKeys: keys) {
-            if values.ubiquitousItemDownloadingStatus == .notDownloaded {
-                return "39.39 GB (In iCloud, sync pending)"
-            } else if values.ubiquitousItemIsDownloading == true {
-                return "39.39 GB (Downloading from iCloud)"
-            }
-        }
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
-              let size = attrs[.size] as? Int64 else {
-            return "0 KB"
-        }
-        if size == 4096 && IOSContainerManager.shared.isUsingUbiquityContainer {
-            return "39.39 GB (iCloud placeholder)"
-        }
-        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-    }
-
-    private var iCloudStatusString: String {
-        guard FileManager.default.ubiquityIdentityToken != nil else {
-            return "iCloud Disabled / Sign-in Required"
-        }
-        let dbURL = IOSContainerManager.shared.databaseURL
-        let keys: Set<URLResourceKey> = [
-            .ubiquitousItemDownloadingStatusKey,
-            .ubiquitousItemIsDownloadingKey
-        ]
-        if let values = try? dbURL.resourceValues(forKeys: keys) {
-            if values.ubiquitousItemDownloadingStatus == .current {
-                return "Synced & Active"
-            } else if values.ubiquitousItemIsDownloading == true {
-                return "Downloading from iCloud"
-            } else if values.ubiquitousItemDownloadingStatus == .notDownloaded {
-                return "Sync Pending (Mac uploading)"
-            }
-        }
-        return "Connected"
-    }
-
-    private var iCloudStatusColor: Color {
-        guard FileManager.default.ubiquityIdentityToken != nil else {
-            return .orange
-        }
-        let dbURL = IOSContainerManager.shared.databaseURL
-        if let values = try? dbURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]) {
-            if values.ubiquitousItemDownloadingStatus == .current {
-                return .green
-            }
-        }
-        return .blue
-    }
-
     public var body: some View {
         NavigationStack {
             List {
-                // Section: Database Info
-                Section("Database & Storage") {
-                    HStack {
-                        Text("Database Size")
-                        Spacer()
-                        Text(databaseSizeString)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack {
-                        Text("Storage Container")
-                        Spacer()
-                        Text(IOSContainerManager.shared.containerTypeDescription)
-                            .foregroundStyle(.secondary)
-                    }
-
+                // Section: About
+                Section("About") {
                     HStack {
                         Text("iCloud Status")
                         Spacer()
-                        Text(iCloudStatusString)
-                            .foregroundStyle(iCloudStatusColor)
+                        Text(appState.isiCloudActive ? "Active" : "Inactive")
+                            .foregroundStyle(appState.isiCloudActive ? .green : .secondary)
                     }
 
                     HStack {
-                        Text("Vector Dimensions")
+                        Text("Database Size")
                         Spacer()
-                        Text("384 (Cosine)")
+                        Text(appState.formattedDatabaseSize)
                             .foregroundStyle(.secondary)
-                    }
-
-                    HStack {
-                        Text("Ubiquity Isolation")
-                        Spacer()
-                        Text("Enforced")
-                            .foregroundStyle(.green)
                     }
                 }
 
@@ -139,7 +60,7 @@ public struct IOSSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Button("Re-index Documents") {
+                    Button("Re-index Sources") {
                         Task {
                             await appState.startIndexing()
                         }
@@ -150,18 +71,6 @@ public struct IOSSettingsView: View {
                         showingRebuildAlert = true
                     }
                     .disabled(appState.isIndexing)
-                }
-
-                // Section: Privacy Info
-                Section("Privacy & On-Device AI") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Zero Cloud Architecture")
-                            .font(.subheadline.bold())
-                        Text("Private Index processes documents and queries entirely on your device using the Apple Neural Engine. Your data and search queries are never transmitted over the network.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
                 }
             }
             .navigationTitle("Settings")

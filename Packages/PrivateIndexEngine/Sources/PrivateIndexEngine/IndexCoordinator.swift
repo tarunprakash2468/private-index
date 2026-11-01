@@ -233,6 +233,18 @@ public actor IndexCoordinator {
         )
     }
 
+    // MARK: - Sources & File Access
+
+    /// Returns high-level indexed sources aggregated from the database.
+    public func getIndexedSources() throws -> [VectorStore.IndexedSource] {
+        try vectorStore.getIndexedSources()
+    }
+
+    /// Returns all file records belonging to a specific source category id.
+    public func getIndexedFiles(forSourceId sourceId: String) throws -> [VectorStore.FileRecord] {
+        try vectorStore.getIndexedFiles(forSourceId: sourceId)
+    }
+
     // MARK: - Search
 
     /// Searches indexed documents using hybrid, vector, or keyword retrieval.

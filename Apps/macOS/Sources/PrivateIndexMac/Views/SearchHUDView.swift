@@ -204,6 +204,10 @@ struct SearchResultRow: View {
         URL(fileURLWithPath: item.filePath).lastPathComponent
     }
 
+    private var sourceName: String {
+        VectorStore.categorizeSource(for: item.filePath).name
+    }
+
     private var directoryPath: String {
         let parent = URL(fileURLWithPath: item.filePath).deletingLastPathComponent().path
         return (parent as NSString).abbreviatingWithTildeInPath
@@ -227,6 +231,14 @@ struct SearchResultRow: View {
                 Text(fileName)
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
+
+                Text(sourceName)
+                    .font(.system(size: 10, weight: .medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+                    .foregroundStyle(.secondary)
 
                 Text(directoryPath)
                     .font(.system(size: 11))

@@ -96,15 +96,21 @@ public final class VectorStore: @unchecked Sendable {
     /// Opens (or creates) the database at `url`, enables WAL mode, and registers the
     /// `sqlite-vec` extension.
     ///
-    /// - Parameter url: File URL for the database. Pass `nil` to open an in-memory database.
-    public init(at url: URL? = nil) throws {
+    /// - Parameters:
+    ///   - url: File URL for the database. Pass `nil` to open an in-memory database.
+    ///   - readOnly: Whether to open in read-only mode to prevent file locking and schema writes.
+    public init(at url: URL? = nil, readOnly: Bool = false) throws {
         let path = url?.path ?? ":memory:"
 
         var dbPointer: OpaquePointer?
+        let flags = readOnly
+            ? (SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+            : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX)
+
         let openResult = sqlite3_open_v2(
             path,
             &dbPointer,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            flags,
             nil
         )
         guard openResult == SQLITE_OK, let db = dbPointer else {
@@ -127,9 +133,11 @@ public final class VectorStore: @unchecked Sendable {
             )
         }
 
-        // Enable WAL mode for better concurrent read performance
-        try execute("PRAGMA journal_mode=WAL;")
-        try execute("PRAGMA foreign_keys=ON;")
+        if !readOnly {
+            // Enable WAL mode for better concurrent read performance
+            try execute("PRAGMA journal_mode=WAL;")
+            try execute("PRAGMA foreign_keys=ON;")
+        }
     }
 
     deinit {
@@ -194,14 +202,20 @@ public final class VectorStore: @unchecked Sendable {
             END;
         """)
 
-        // Backfill any pre-existing text chunks into documents_fts
-        try execute("""
-            INSERT OR IGNORE INTO documents_fts (rowid, file_path, content)
-            SELECT tc.id, f.path, tc.content
-            FROM text_chunks tc
-            JOIN indexed_files f ON f.id = tc.file_id
-            WHERE tc.id NOT IN (SELECT rowid FROM documents_fts);
-        """)
+        // Backfill any pre-existing text chunks into documents_fts only if documents_fts is empty
+        var checkStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "SELECT 1 FROM documents_fts LIMIT 1;", -1, &checkStmt, nil) == SQLITE_OK {
+            let hasRows = sqlite3_step(checkStmt) == SQLITE_ROW
+            sqlite3_finalize(checkStmt)
+            if !hasRows {
+                try execute("""
+                    INSERT OR IGNORE INTO documents_fts (rowid, file_path, content)
+                    SELECT tc.id, f.path, tc.content
+                    FROM text_chunks tc
+                    JOIN indexed_files f ON f.id = tc.file_id;
+                """)
+            }
+        }
     }
 
     // MARK: - File Operations
@@ -264,6 +278,135 @@ public final class VectorStore: @unchecked Sendable {
             files[pathStr] = record
         }
         return files
+    }
+
+    // MARK: - Indexed Source Model & Aggregation
+
+    public struct IndexedSource: Identifiable, Sendable, Hashable {
+        public let id: String
+        public let name: String
+        public let rootPath: String
+        public let fileCount: Int
+        public let totalBytes: Int64
+        public let iconSystemName: String
+
+        public var formattedBytes: String {
+            ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        }
+
+        public init(
+            id: String,
+            name: String,
+            rootPath: String,
+            fileCount: Int,
+            totalBytes: Int64,
+            iconSystemName: String
+        ) {
+            self.id = id
+            self.name = name
+            self.rootPath = rootPath
+            self.fileCount = fileCount
+            self.totalBytes = totalBytes
+            self.iconSystemName = iconSystemName
+        }
+    }
+
+    /// Groups all indexed files into high-level synced sources (e.g. Documents, Google Drive, iCloud Drive, etc.).
+    public func getIndexedSources() throws -> [IndexedSource] {
+        let allFiles = try getAllIndexedFiles()
+        guard !allFiles.isEmpty else { return [] }
+
+        var buckets: [String: (name: String, rootPath: String, icon: String, count: Int, totalBytes: Int64)] = [:]
+
+        for record in allFiles.values {
+            let path = record.path
+            let (id, name, rootPath, icon) = Self.categorizeSource(for: path)
+
+            if let existing = buckets[id] {
+                buckets[id] = (
+                    name: existing.name,
+                    rootPath: existing.rootPath,
+                    icon: existing.icon,
+                    count: existing.count + 1,
+                    totalBytes: existing.totalBytes + record.size
+                )
+            } else {
+                buckets[id] = (
+                    name: name,
+                    rootPath: rootPath,
+                    icon: icon,
+                    count: 1,
+                    totalBytes: record.size
+                )
+            }
+        }
+
+        return buckets.map { (id, val) in
+            IndexedSource(
+                id: id,
+                name: val.name,
+                rootPath: val.rootPath,
+                fileCount: val.count,
+                totalBytes: val.totalBytes,
+                iconSystemName: val.icon
+            )
+        }.sorted {
+            if $0.fileCount != $1.fileCount {
+                return $0.fileCount > $1.fileCount
+            }
+            return $0.name < $1.name
+        }
+    }
+
+    /// Returns all indexed files belonging to a specific source category id.
+    public func getIndexedFiles(forSourceId sourceId: String) throws -> [FileRecord] {
+        let allFiles = try getAllIndexedFiles()
+        return allFiles.values.filter {
+            Self.categorizeSource(for: $0.path).id == sourceId
+        }.sorted { $0.path < $1.path }
+    }
+
+    public static func categorizeSource(for path: String) -> (id: String, name: String, rootPath: String, icon: String) {
+        if path.contains("/CloudStorage/GoogleDrive") {
+            let components = path.components(separatedBy: "/")
+            if let idx = components.firstIndex(where: { $0.hasPrefix("GoogleDrive") }) {
+                let root = components[0...idx].joined(separator: "/")
+                return (id: "google-drive", name: "Google Drive", rootPath: root, icon: "externaldrive.cloud.fill")
+            }
+            return (id: "google-drive", name: "Google Drive", rootPath: "Google Drive", icon: "externaldrive.cloud.fill")
+        }
+        if path.contains("/Mobile Documents/com~apple~CloudDocs") {
+            return (id: "icloud-drive", name: "iCloud Drive", rootPath: "~/Library/Mobile Documents/com~apple~CloudDocs", icon: "icloud.fill")
+        }
+        if path.contains("/CloudStorage/OneDrive") {
+            return (id: "onedrive", name: "OneDrive", rootPath: "OneDrive", icon: "externaldrive.cloud.fill")
+        }
+        if path.contains("/CloudStorage/Dropbox") {
+            return (id: "dropbox", name: "Dropbox", rootPath: "Dropbox", icon: "externaldrive.cloud.fill")
+        }
+
+        let standardDirs = ["Documents", "Desktop", "Downloads", "Music", "Movies", "Pictures", "Developer", "Projects"]
+        for dir in standardDirs {
+            if path.contains("/\(dir)/") || path.hasSuffix("/\(dir)") {
+                let pattern = "/\(dir)"
+                if let range = path.range(of: pattern) {
+                    let root = String(path[..<range.upperBound])
+                    let icon: String
+                    switch dir {
+                    case "Desktop": icon = "display"
+                    case "Downloads": icon = "arrow.down.circle.fill"
+                    case "Music": icon = "music.note"
+                    case "Movies": icon = "film.fill"
+                    default: icon = "folder.fill"
+                    }
+                    return (id: dir.lowercased(), name: dir, rootPath: root, icon: icon)
+                }
+            }
+        }
+
+        let url = URL(fileURLWithPath: path)
+        let parent = url.deletingLastPathComponent()
+        return (id: parent.path, name: parent.lastPathComponent.isEmpty ? "Root" : parent.lastPathComponent, rootPath: parent.path, icon: "folder.fill")
     }
 
     /// Deletes a file and all its associated text chunks, vector embeddings, and FTS entries.

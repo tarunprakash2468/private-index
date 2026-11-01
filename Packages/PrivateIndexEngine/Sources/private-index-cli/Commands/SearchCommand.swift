@@ -141,7 +141,8 @@ func runSearch(
         print("\(ANSI.bold)Query:\(ANSI.reset) \"\(query)\" \(ANSI.dim)(mode: \(mode.rawValue), limit: \(limit)\(simInfo))\(ANSI.reset)\n")
     }
 
-    let (store, coordinator) = try setupEngine()
+    let (store, coordinator) = try setupEngine(readOnly: true)
+    defer { store.close() }
 
     let startTime = Date()
     let results = try await coordinator.search(

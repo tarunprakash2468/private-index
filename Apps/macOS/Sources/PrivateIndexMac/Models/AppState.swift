@@ -30,6 +30,22 @@ public final class AppState {
     public var indexStatusMessage: String = "Ready"
     public var lastReport: IndexReport? = nil
     public var totalFilesIndexed: Int = 0
+    public var indexedSources: [VectorStore.IndexedSource] = []
+
+    public var isiCloudActive: Bool {
+        iCloudContainerManager.shared.isUsingUbiquityContainer
+    }
+
+    public var formattedDatabaseSize: String {
+        let dbURL = iCloudContainerManager.shared.databaseURL
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
+              let size = attrs[.size] as? Int64 else {
+            return "0 KB"
+        }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: size)
+    }
 
     // MARK: - Preferences
     public var monitoredDirectoryURL: URL {
@@ -113,9 +129,12 @@ public final class AppState {
             self.vectorStore = instance.store
             self.coordinator = instance.coordinator
 
-            // Count existing files
+            // Count existing files and load sources
             if let files = try? instance.store.getAllIndexedFiles() {
                 self.totalFilesIndexed = files.count
+            }
+            if let sources = try? instance.store.getIndexedSources() {
+                self.indexedSources = sources
             }
         } catch {
             self.errorMessage = "Engine initialization failed: \(error.localizedDescription)"
@@ -222,6 +241,9 @@ public final class AppState {
             self.indexStatusMessage = "Up to date (\(report.filesIndexed) indexed, \(report.filesSkipped) skipped)"
             if let files = try? vectorStore?.getAllIndexedFiles() {
                 self.totalFilesIndexed = files.count
+            }
+            if let sources = try? vectorStore?.getIndexedSources() {
+                self.indexedSources = sources
             }
             self.isIndexing = false
         } catch {

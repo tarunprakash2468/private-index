@@ -34,6 +34,31 @@ public final class IOSAppState {
     public var indexStatusMessage: String = "Ready"
     public var lastReport: IndexReport? = nil
     public var indexedFiles: [VectorStore.FileRecord] = []
+    public var indexedSources: [VectorStore.IndexedSource] = []
+
+    // MARK: - iCloud & Storage Status Helpers
+
+    public var isiCloudActive: Bool {
+        IOSContainerManager.shared.isUsingUbiquityContainer
+    }
+
+    public var formattedDatabaseSize: String {
+        let dbURL = IOSContainerManager.shared.databaseURL
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
+              let size = attrs[.size] as? Int64 else {
+            return "0 KB"
+        }
+        if size == 4096 && IOSContainerManager.shared.isUsingUbiquityContainer {
+            return "39.39 GB (In iCloud)"
+        }
+        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    public func files(for sourceId: String) -> [VectorStore.FileRecord] {
+        return indexedFiles.filter {
+            VectorStore.categorizeSource(for: $0.path).id == sourceId
+        }
+    }
 
     // MARK: - Monitored Folder
     public var monitoredFolderURL: URL? = nil
@@ -122,6 +147,9 @@ public final class IOSAppState {
     public func refreshIndexedFiles() {
         if let filesMap = try? vectorStore?.getAllIndexedFiles() {
             self.indexedFiles = Array(filesMap.values).sorted { $0.path < $1.path }
+        }
+        if let sources = try? vectorStore?.getIndexedSources() {
+            self.indexedSources = sources
         }
     }
 

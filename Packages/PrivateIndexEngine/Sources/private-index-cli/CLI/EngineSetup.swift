@@ -16,12 +16,14 @@ func defaultDatabaseURL() -> URL {
 }
 
 func setupEngine(
+    readOnly: Bool = false,
     downloadCloudFiles: Bool = true,
     minBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes
 ) throws -> (VectorStore, IndexCoordinator) {
     let dbURL = defaultDatabaseURL()
     let instance = try EngineFactory.create(
         databaseURL: dbURL,
+        readOnly: readOnly,
         downloadCloudFiles: downloadCloudFiles,
         minDiskBufferBytes: minBufferBytes
     )

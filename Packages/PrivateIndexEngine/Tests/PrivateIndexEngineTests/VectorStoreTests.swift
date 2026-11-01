@@ -243,4 +243,42 @@ final class VectorStoreTests: XCTestCase {
 
         store.close()
     }
+
+    // MARK: - Sources Aggregation Tests
+
+    func testIndexedSourcesCategorization() throws {
+        let store = try VectorStore(at: nil)
+        try store.createSchema()
+
+        try store.insertFile(path: "/Users/test/Documents/Resume.pdf", mtime: Date(), size: 500)
+        try store.insertFile(path: "/Users/test/Documents/Notes.md", mtime: Date(), size: 300)
+        try store.insertFile(path: "/Users/test/Library/CloudStorage/GoogleDrive-test@domain.com/My Drive/Report.pdf", mtime: Date(), size: 2000)
+        try store.insertFile(path: "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Ideas.txt", mtime: Date(), size: 150)
+        try store.insertFile(path: "/Users/test/Desktop/Screen.png", mtime: Date(), size: 800)
+
+        let sources = try store.getIndexedSources()
+        XCTAssertEqual(sources.count, 4)
+
+        // Top source should be Documents with 2 files
+        XCTAssertEqual(sources[0].id, "documents")
+        XCTAssertEqual(sources[0].name, "Documents")
+        XCTAssertEqual(sources[0].fileCount, 2)
+        XCTAssertEqual(sources[0].totalBytes, 800)
+
+        // Google Drive should have 1 file
+        let gdrive = sources.first { $0.id == "google-drive" }
+        XCTAssertNotNil(gdrive)
+        XCTAssertEqual(gdrive?.fileCount, 1)
+
+        // iCloud Drive should have 1 file
+        let icloud = sources.first { $0.id == "icloud-drive" }
+        XCTAssertNotNil(icloud)
+        XCTAssertEqual(icloud?.fileCount, 1)
+
+        // Filter files by source
+        let docFiles = try store.getIndexedFiles(forSourceId: "documents")
+        XCTAssertEqual(docFiles.count, 2)
+
+        store.close()
+    }
 }

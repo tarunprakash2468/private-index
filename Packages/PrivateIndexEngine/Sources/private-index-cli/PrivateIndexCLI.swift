@@ -11,6 +11,7 @@ struct PrivateIndexCLI: AsyncParsableCommand {
             Index.self,
             Watch.self,
             Search.self,
+            Sources.self,
             Bench.self,
             Stats.self,
             Reset.self,

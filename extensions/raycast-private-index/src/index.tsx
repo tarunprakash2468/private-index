@@ -172,6 +172,31 @@ function formatDisplayPath(fullPath: string): string {
   return dir;
 }
 
+function categorizeSource(filePath: string): { name: string } {
+  if (filePath.includes("/CloudStorage/GoogleDrive")) {
+    return { name: "Google Drive" };
+  }
+  if (filePath.includes("/Mobile Documents/com~apple~CloudDocs")) {
+    return { name: "iCloud Drive" };
+  }
+  if (filePath.includes("/CloudStorage/OneDrive")) {
+    return { name: "OneDrive" };
+  }
+  if (filePath.includes("/CloudStorage/Dropbox")) {
+    return { name: "Dropbox" };
+  }
+
+  const standardDirs = ["Documents", "Desktop", "Downloads", "Music", "Movies", "Pictures", "Developer", "Projects"];
+  for (const dir of standardDirs) {
+    if (filePath.includes(`/${dir}/`) || filePath.endsWith(`/${dir}`)) {
+      return { name: dir };
+    }
+  }
+
+  const parent = path.basename(path.dirname(filePath));
+  return { name: parent || "Source" };
+}
+
 export default function SearchCommand() {
   const preferences = useMemo(() => getPreferenceValues<Preferences>(), []);
   const [searchText, setSearchText] = useState("");
@@ -426,6 +451,7 @@ export default function SearchCommand() {
         const confidenceColor = getConfidenceColor(item.confidence);
         const matchTypeColor = getMatchTypeColor(item.matchType);
         const displayParent = formatDisplayPath(item.filePath);
+        const source = categorizeSource(item.filePath);
 
         return (
           <List.Item
@@ -435,6 +461,12 @@ export default function SearchCommand() {
             icon={{ fileIcon: item.filePath }}
             quickLook={{ path: item.filePath, name: item.fileName }}
             accessories={[
+              {
+                tag: {
+                  value: source.name,
+                },
+                tooltip: `Source: ${source.name}`,
+              },
               {
                 tag: {
                   value: `[${item.matchType}]`,
@@ -459,6 +491,10 @@ export default function SearchCommand() {
                       title="File Name"
                       text={item.fileName}
                       icon={{ fileIcon: item.filePath }}
+                    />
+                    <List.Item.Detail.Metadata.Label
+                      title="Source"
+                      text={source.name}
                     />
                     <List.Item.Detail.Metadata.Label
                       title="File Path"

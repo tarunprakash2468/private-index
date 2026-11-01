@@ -16,9 +16,9 @@ public struct MainTabView: View {
                     Label("Search", systemImage: "magnifyingglass")
                 }
 
-            IOSDocumentsView(appState: appState)
+            IOSSourcesView(appState: appState)
                 .tabItem {
-                    Label("Documents", systemImage: "folder")
+                    Label("Sources", systemImage: "folder.fill")
                 }
 
             IOSSettingsView(appState: appState)

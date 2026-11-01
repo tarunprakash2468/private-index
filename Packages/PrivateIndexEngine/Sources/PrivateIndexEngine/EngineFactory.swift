@@ -13,13 +13,16 @@ public struct EngineInstance: Sendable {
 public enum EngineFactory {
     public static func create(
         databaseURL: URL,
+        readOnly: Bool = false,
         downloadCloudFiles: Bool = true,
         minDiskBufferBytes: Int64 = CloudDownloadManager.defaultMinBufferBytes,
         windowSize: Int = 500,
         overlap: Int = 100
     ) throws -> EngineInstance {
-        let store = try VectorStore(at: databaseURL)
-        try store.createSchema()
+        let store = try VectorStore(at: databaseURL, readOnly: readOnly)
+        if !readOnly {
+            try store.createSchema()
+        }
 
         let tokenizer: BertTokenizer
         if let t = try? BertTokenizer() {

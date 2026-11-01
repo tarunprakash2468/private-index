@@ -18,75 +18,56 @@ public struct SettingsView: View {
         self.appState = AppState.shared
     }
 
-    private var databaseSizeString: String {
-        let dbURL = iCloudContainerManager.shared.databaseURL
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path),
-              let size = attrs[.size] as? Int64 else {
-            return "0 KB"
-        }
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: size)
-    }
-
     public var body: some View {
         Form {
-            // MARK: - Folder Selection
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Monitored Folder")
-                        .font(.headline)
+            // MARK: - About
+            Section("About") {
+                HStack {
+                    Text("iCloud Status")
+                    Spacer()
+                    Text(appState.isiCloudActive ? "Active" : "Inactive")
+                        .foregroundStyle(appState.isiCloudActive ? .green : .secondary)
+                }
 
-                    Text("Private Index monitors this folder recursively and automatically indexes text and code documents.")
-                        .font(.caption)
+                HStack {
+                    Text("Database Size")
+                    Spacer()
+                    Text(appState.formattedDatabaseSize)
                         .foregroundStyle(.secondary)
-
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(Color.accentColor)
-
-                        Text((appState.monitoredDirectoryURL.path as NSString).abbreviatingWithTildeInPath)
-                            .font(.system(.body, design: .monospaced))
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        Button("Change Folder...") {
-                            chooseFolder()
-                        }
-                    }
-                    .padding(8)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
 
-            // MARK: - Database & Indexing
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Index Status")
-                        .font(.headline)
-
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-                        GridRow {
-                            Text("Indexed Files:").foregroundStyle(.secondary)
-                            Text("\(appState.totalFilesIndexed)")
-                        }
-                        GridRow {
-                            Text("Database Size:").foregroundStyle(.secondary)
-                            Text(databaseSizeString)
-                        }
-                        GridRow {
-                            Text("Database Location:").foregroundStyle(.secondary)
-                            Text((iCloudContainerManager.shared.databaseURL.path as NSString).abbreviatingWithTildeInPath)
-                                .font(.system(.caption, design: .monospaced))
-                                .lineLimit(1)
-                        }
-                        GridRow {
-                            Text("Status:").foregroundStyle(.secondary)
-                            Text(appState.indexStatusMessage)
+            // MARK: - Synced Sources
+            Section("Synced Sources") {
+                if appState.indexedSources.isEmpty {
+                    Text("No sources indexed yet.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(appState.indexedSources) { source in
+                        HStack(spacing: 10) {
+                            Image(systemName: source.iconSystemName)
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 20)
+                            Text(source.name)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Text("\(source.fileCount) files • \(source.formattedBytes)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
+                }
+            }
+
+            // MARK: - Actions
+            Section("Actions") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Status:").foregroundStyle(.secondary)
+                        Text(appState.indexStatusMessage)
+                    }
+                    .font(.caption)
 
                     if appState.isIndexing {
                         ProgressView(value: appState.indexProgress)
@@ -94,64 +75,33 @@ public struct SettingsView: View {
                     }
 
                     HStack(spacing: 12) {
-                        Button("Re-index Now") {
+                        Button("Re-index Sources") {
                             Task {
                                 await appState.startIndexing()
                             }
                         }
                         .disabled(appState.isIndexing)
 
-                        Button("Rebuild Index From Scratch", role: .destructive) {
+                        Button("Rebuild Index from Scratch", role: .destructive) {
                             showingRebuildConfirmation = true
                         }
                         .disabled(appState.isIndexing)
                     }
-                    .padding(.top, 4)
                 }
             }
 
             // MARK: - Startup & Power
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Startup & Background")
-                        .font(.headline)
+            Section("Options") {
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { appState.launchAtLogin },
+                    set: { appState.launchAtLogin = $0 }
+                ))
 
-                    Toggle("Launch at Login", isOn: Binding(
-                        get: { appState.launchAtLogin },
-                        set: { appState.launchAtLogin = $0 }
-                    ))
-
-                    Text("Keep the menu bar companion running seamlessly on boot without needing the search window open.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Divider()
-
-                    Toggle("Prevent sleep while indexing", isOn: $appState.preventSleepDuringIndexing)
-
-                    Text("Requests a power assertion (kIOPMAssertionTypePreventUserIdleSystemSleep) during active indexing passes so system sleep does not interrupt neural embedding.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // MARK: - Privacy & Architecture
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Privacy & Security")
-                        .font(.headline)
-                    Text("• Zero-Cloud: All embeddings and SQLite tables remain entirely on your Mac.")
-                        .font(.caption)
-                    Text("• Neural Engine Acceleration: Uses FP16 Core ML weights on the Apple Neural Engine.")
-                        .font(.caption)
-                    Text("• iCloud Loop Prevention: The database is strictly isolated from user documents.")
-                        .font(.caption)
-                }
-                .foregroundStyle(.secondary)
+                Toggle("Prevent sleep while indexing", isOn: $appState.preventSleepDuringIndexing)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 540, height: 520)
+        .frame(width: 520, height: 480)
         .confirmationDialog(
             "Rebuild Index?",
             isPresented: $showingRebuildConfirmation,
@@ -164,25 +114,7 @@ public struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will purge the current vector index and re-scan your documents. This process runs in the background.")
-        }
-    }
-
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = "Select Folder"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            do {
-                try iCloudContainerManager.shared.validateTargetFolder(url)
-                appState.monitoredDirectoryURL = url
-            } catch {
-                appState.errorMessage = error.localizedDescription
-            }
+            Text("This will purge the current vector index and re-scan your sources. This process runs in the background.")
         }
     }
 }
