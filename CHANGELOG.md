@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.9.0...private-index-v0.10.0) (2026-11-02)
+
+
+### Features
+
+* **icloud:** connect shared iCloud Ubiquity Container database across macOS and iOS ([a28f0e9](https://github.com/tarunprakash2468/private-index/commit/a28f0e9a125502fea7e33bd4c5e830f0d59c9cf9))
+* **ios:** add native PrivateIndex.xcodeproj for one-click Xcode deployment ([447ab9c](https://github.com/tarunprakash2468/private-index/commit/447ab9cb16b75750a4088786b736169a9b300b53))
+* **ios:** improve iCloud ubiquity sync status and prevent dataless placeholder overwrites ([17ecda0](https://github.com/tarunprakash2468/private-index/commit/17ecda0b76ea30c7bfd5f5e3f6bfdc1d6f0d615a))
+* rename Documents to Sources, display synced sources across clients, and simplify settings ([afe55ae](https://github.com/tarunprakash2468/private-index/commit/afe55ae8c8b7ca88ab1fe52546b2a465f41cb493))
+
+
+### Bug Fixes
+
+* **all:** resolve macOS HUD controls, Google Drive icon, and iOS iCloud sync UX ([7ccf03a](https://github.com/tarunprakash2468/private-index/commit/7ccf03aaf581930d28123fefb7196553679b1272))
+* **cli:** clamp swift-argument-parser to &lt;1.8.0 for Swift 5.10 compatibility ([2cb4afe](https://github.com/tarunprakash2468/private-index/commit/2cb4afef6e1281ea432695d7f19ef74e00df2cfd))
+* **cli:** clamp swift-argument-parser to &lt;1.8.0 for Swift 5.10 toolchain compatibility ([ab701c9](https://github.com/tarunprakash2468/private-index/commit/ab701c955f5259704fd0600e73a0d0c8a3a4a789))
+* **ios:** resolve UIDeviceFamily and AccentColor warnings ([d8e015d](https://github.com/tarunprakash2468/private-index/commit/d8e015d6b1c09b936490fbad8871904f656faa60))
+* **ios:** use $(EXECUTABLE_NAME) for CFBundleExecutable in Info.plist ([481dfb3](https://github.com/tarunprakash2468/private-index/commit/481dfb389b48b6c205e5910064f4e739bd7e180c))
+* optimize hybrid search for large databases, install release pi CLI and macOS app, remove status section and iCloud suffix ([327d360](https://github.com/tarunprakash2468/private-index/commit/327d3609dbf17e13c2e00ebf152c0781130b8733))
+
 ## [0.9.0](https://github.com/tarunprakash2468/private-index/compare/private-index-v0.8.2...private-index-v0.9.0) (2026-10-26)
 
 
