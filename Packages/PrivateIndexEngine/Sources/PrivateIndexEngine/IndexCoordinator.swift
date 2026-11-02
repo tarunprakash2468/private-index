@@ -350,20 +350,44 @@ public actor IndexCoordinator {
             // When BM25 finds candidate documents, we semantically re-score those candidate chunks
             // using the query embedding for fast (~15ms) neural hybrid search.
             if !keywordResults.isEmpty {
-                for kr in keywordResults.prefix(candidateLimit) {
-                    if let candidateVec = try? await embeddingModel.generateEmbedding(for: kr.content) {
-                        let sim = VectorStore.cosineSimilarity(queryVector, candidateVec)
-                        let dist = max(0.0, 1.0 - sim)
+                if !(embeddingModel is MockEmbeddingModel) {
+                    let rescoreLimit = min(15, keywordResults.count)
+                    for (idx, kr) in keywordResults.prefix(candidateLimit).enumerated() {
+                        if idx < rescoreLimit, let candidateVec = try? await embeddingModel.generateEmbedding(for: kr.content) {
+                            let sim = VectorStore.cosineSimilarity(queryVector, candidateVec)
+                            let dist = max(0.0, 1.0 - sim)
+                            vectorResults.append(VectorStore.SearchResult(
+                                chunkId: kr.chunkId,
+                                fileId: kr.fileId,
+                                filePath: kr.filePath,
+                                distance: dist,
+                                content: kr.content
+                            ))
+                        } else {
+                            let fallbackDist = min(0.5, 0.15 + Float(idx) * 0.02)
+                            vectorResults.append(VectorStore.SearchResult(
+                                chunkId: kr.chunkId,
+                                fileId: kr.fileId,
+                                filePath: kr.filePath,
+                                distance: fallbackDist,
+                                content: kr.content
+                            ))
+                        }
+                    }
+                    vectorResults.sort { $0.distance < $1.distance }
+                } else {
+                    // When MockEmbeddingModel is active, avoid fake random hashes that distort BM25 ranking.
+                    for (idx, kr) in keywordResults.prefix(candidateLimit).enumerated() {
+                        let rankDist = min(0.4, Float(idx) * 0.02)
                         vectorResults.append(VectorStore.SearchResult(
                             chunkId: kr.chunkId,
                             fileId: kr.fileId,
                             filePath: kr.filePath,
-                            distance: dist,
+                            distance: rankDist,
                             content: kr.content
                         ))
                     }
                 }
-                vectorResults.sort { $0.distance < $1.distance }
             } else {
                 // If BM25 returned no keyword matches, fall back to vector search
                 vectorResults = (try? vectorStore.search(queryVector: queryVector, limit: candidateLimit)) ?? []

@@ -87,6 +87,10 @@ public final class IOSAppState {
         #endif
     }
 
+    public var isDatabaseReady: Bool {
+        coordinator != nil
+    }
+
     // MARK: - Engine Setup
 
     private func setupEngine() {
@@ -99,8 +103,9 @@ public final class IOSAppState {
                 .ubiquitousItemIsDownloadingKey
             ]
             if let values = try? dbURL.resourceValues(forKeys: keys) {
-                if values.ubiquitousItemDownloadingStatus != .current {
-                    // Item is dataless or still actively downloading — do not open placeholder with SQLite!
+                if values.ubiquitousItemDownloadingStatus == .notDownloaded {
+                    // Item is dataless — trigger iCloud download immediately and notify user
+                    try? FileManager.default.startDownloadingUbiquitousItem(at: dbURL)
                     self.vectorStore?.close()
                     self.vectorStore = nil
                     self.coordinator = nil
@@ -111,7 +116,7 @@ public final class IOSAppState {
         }
 
         do {
-            let instance = try EngineFactory.create(databaseURL: dbURL)
+            let instance = try EngineFactory.create(databaseURL: dbURL, readOnly: true)
             self.vectorStore = instance.store
             self.coordinator = instance.coordinator
             self.errorMessage = nil
@@ -180,6 +185,7 @@ public final class IOSAppState {
             return
         }
         isSearching = true
+        errorMessage = nil
 
         do {
             let results = try await coordinator.search(query: query, limit: 20)
@@ -190,6 +196,7 @@ public final class IOSAppState {
         } catch {
             if !Task.isCancelled {
                 self.errorMessage = "Search failed: \(error.localizedDescription)"
+                self.searchResults = []
                 self.isSearching = false
             }
         }

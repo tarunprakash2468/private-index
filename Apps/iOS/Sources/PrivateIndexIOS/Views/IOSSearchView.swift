@@ -26,6 +26,29 @@ public struct IOSSearchView: View {
                         Text("Finding semantic matches...")
                             .foregroundStyle(.secondary)
                     }
+                } else if !appState.isDatabaseReady {
+                    ContentUnavailableView(
+                        "Syncing with iCloud",
+                        systemImage: "icloud.and.arrow.down",
+                        description: Text("The database (\(appState.formattedDatabaseSize)) is syncing from iCloud Drive. Please ensure your iPhone is connected to Wi-Fi.")
+                    )
+                    .overlay(alignment: .bottom) {
+                        Button {
+                            Task {
+                                await appState.syncAndCheckDatabase()
+                            }
+                        } label: {
+                            Label("Check iCloud Status", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.bottom, 40)
+                    }
+                } else if let err = appState.errorMessage, appState.searchResults.isEmpty {
+                    ContentUnavailableView(
+                        "Search Error",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(err)
+                    )
                 } else if appState.searchResults.isEmpty && !appState.query.isEmpty {
                     ContentUnavailableView(
                         "No Matches Found",

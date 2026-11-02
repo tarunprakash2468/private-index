@@ -41,13 +41,15 @@ struct WindowAccessor: NSViewRepresentable {
             if let window = view.window {
                 window.isOpaque = false
                 window.backgroundColor = .clear
-                window.level = .floating
+                window.level = .normal // Does not force stay on top of other applications
+                window.hidesOnDeactivate = true // Automatically hides cleanly when user clicks away
                 window.hasShadow = false // Shadow handled by SwiftUI clipShape
                 window.titlebarAppearsTransparent = true
                 window.standardWindowButton(.closeButton)?.isHidden = true
                 window.standardWindowButton(.miniaturizeButton)?.isHidden = true
                 window.standardWindowButton(.zoomButton)?.isHidden = true
                 window.isMovableByWindowBackground = true
+                window.isReleasedWhenClosed = false
             }
         }
         return view

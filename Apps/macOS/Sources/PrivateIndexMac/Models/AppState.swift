@@ -266,7 +266,51 @@ public final class AppState {
         await startIndexing()
     }
 
-    // MARK: - File Actions
+    // MARK: - File & Selection Actions
+
+    public func selectNextResult() {
+        guard !searchResults.isEmpty else { return }
+        guard let currentID = selectedResultID,
+              let currentIndex = searchResults.firstIndex(where: { $0.id == currentID }) else {
+            selectedResultID = searchResults.first?.id
+            return
+        }
+        let nextIndex = min(searchResults.count - 1, currentIndex + 1)
+        selectedResultID = searchResults[nextIndex].id
+    }
+
+    public func selectPreviousResult() {
+        guard !searchResults.isEmpty else { return }
+        guard let currentID = selectedResultID,
+              let currentIndex = searchResults.firstIndex(where: { $0.id == currentID }) else {
+            selectedResultID = searchResults.first?.id
+            return
+        }
+        let prevIndex = max(0, currentIndex - 1)
+        selectedResultID = searchResults[prevIndex].id
+    }
+
+    public func openSelectedResult() {
+        guard let currentID = selectedResultID,
+              let item = searchResults.first(where: { $0.id == currentID }) else {
+            if let first = searchResults.first {
+                openFile(at: first.filePath)
+            }
+            return
+        }
+        openFile(at: item.filePath)
+    }
+
+    public func revealSelectedResult() {
+        guard let currentID = selectedResultID,
+              let item = searchResults.first(where: { $0.id == currentID }) else {
+            if let first = searchResults.first {
+                revealInFinder(at: first.filePath)
+            }
+            return
+        }
+        revealInFinder(at: item.filePath)
+    }
 
     public func openFile(at path: String) {
         let url = URL(fileURLWithPath: path)

@@ -10,6 +10,7 @@ public struct SearchHUDView: View {
 
     @Bindable var appState: AppState
     @FocusState private var isFieldFocused: Bool
+    @State private var eventMonitor: Any? = nil
 
     public init(appState: AppState) {
         self.appState = appState
@@ -57,6 +58,60 @@ public struct SearchHUDView: View {
         .shadow(color: .black.opacity(0.25), radius: 30, x: 0, y: 15)
         .onAppear {
             isFieldFocused = true
+            setupKeyboardMonitor()
+        }
+        .onDisappear {
+            removeKeyboardMonitor()
+        }
+    }
+
+    private func setupKeyboardMonitor() {
+        guard eventMonitor == nil else { return }
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Down Arrow (125)
+            if event.keyCode == 125 {
+                appState.selectNextResult()
+                return nil
+            }
+            // Up Arrow (126)
+            if event.keyCode == 126 {
+                appState.selectPreviousResult()
+                return nil
+            }
+            // Return / Enter (36)
+            if event.keyCode == 36 {
+                if event.modifierFlags.contains(.command) {
+                    appState.revealSelectedResult()
+                } else {
+                    appState.openSelectedResult()
+                }
+                closeHUD()
+                return nil
+            }
+            // Escape (53)
+            if event.keyCode == 53 {
+                closeHUD()
+                return nil
+            }
+            // Cmd + W (keyCode 13 + command modifier)
+            if event.keyCode == 13 && event.modifierFlags.contains(.command) {
+                closeHUD()
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeKeyboardMonitor() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
+
+    private func closeHUD() {
+        if let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.identifier?.rawValue == "search-hud" }) {
+            window.orderOut(nil)
         }
     }
 
@@ -93,22 +148,38 @@ public struct SearchHUDView: View {
     // MARK: - Results List
 
     private var resultsListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 6) {
-                ForEach(appState.searchResults) { item in
-                    SearchResultRow(
-                        item: item,
-                        isSelected: appState.selectedResultID == item.id,
-                        onOpen: { appState.openFile(at: item.filePath) },
-                        onReveal: { appState.revealInFinder(at: item.filePath) }
-                    )
-                    .onTapGesture {
-                        appState.selectedResultID = item.id
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(appState.searchResults) { item in
+                        SearchResultRow(
+                            item: item,
+                            isSelected: appState.selectedResultID == item.id,
+                            onOpen: {
+                                appState.openFile(at: item.filePath)
+                                closeHUD()
+                            },
+                            onReveal: {
+                                appState.revealInFinder(at: item.filePath)
+                                closeHUD()
+                            }
+                        )
+                        .id(item.id)
+                        .onTapGesture {
+                            appState.selectedResultID = item.id
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .onChange(of: appState.selectedResultID) { _, newID in
+                if let newID = newID {
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        proxy.scrollTo(newID, anchor: .center)
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
         }
     }
 

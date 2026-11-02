@@ -375,18 +375,18 @@ public final class VectorStore: @unchecked Sendable {
             let components = path.components(separatedBy: "/")
             if let idx = components.firstIndex(where: { $0.hasPrefix("GoogleDrive") }) {
                 let root = components[0...idx].joined(separator: "/")
-                return (id: "google-drive", name: "Google Drive", rootPath: root, icon: "externaldrive.cloud.fill")
+                return (id: "google-drive", name: "Google Drive", rootPath: root, icon: "triangle.fill")
             }
-            return (id: "google-drive", name: "Google Drive", rootPath: "Google Drive", icon: "externaldrive.cloud.fill")
+            return (id: "google-drive", name: "Google Drive", rootPath: "Google Drive", icon: "triangle.fill")
         }
         if path.contains("/Mobile Documents/com~apple~CloudDocs") {
             return (id: "icloud-drive", name: "iCloud Drive", rootPath: "~/Library/Mobile Documents/com~apple~CloudDocs", icon: "icloud.fill")
         }
         if path.contains("/CloudStorage/OneDrive") {
-            return (id: "onedrive", name: "OneDrive", rootPath: "OneDrive", icon: "externaldrive.cloud.fill")
+            return (id: "onedrive", name: "OneDrive", rootPath: "OneDrive", icon: "cloud.fill")
         }
         if path.contains("/CloudStorage/Dropbox") {
-            return (id: "dropbox", name: "Dropbox", rootPath: "Dropbox", icon: "externaldrive.cloud.fill")
+            return (id: "dropbox", name: "Dropbox", rootPath: "Dropbox", icon: "archivebox.fill")
         }
 
         let standardDirs = ["Documents", "Desktop", "Downloads", "Music", "Movies", "Pictures", "Developer", "Projects"]
@@ -401,6 +401,8 @@ public final class VectorStore: @unchecked Sendable {
                     case "Downloads": icon = "arrow.down.circle.fill"
                     case "Music": icon = "music.note"
                     case "Movies": icon = "film.fill"
+                    case "Pictures": icon = "photo.fill"
+                    case "Developer": icon = "hammer.fill"
                     default: icon = "folder.fill"
                     }
                     return (id: dir.lowercased(), name: dir, rootPath: root, icon: icon)

@@ -46,7 +46,7 @@ public struct SettingsView: View {
                 } else {
                     ForEach(appState.indexedSources) { source in
                         HStack(spacing: 10) {
-                            Image(systemName: source.iconSystemName)
+                            Image(systemName: source.iconSystemName.isEmpty ? "folder.fill" : source.iconSystemName)
                                 .foregroundStyle(Color.accentColor)
                                 .frame(width: 20)
                             Text(source.name)

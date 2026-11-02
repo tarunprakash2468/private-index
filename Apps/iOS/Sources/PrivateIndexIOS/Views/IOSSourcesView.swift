@@ -39,7 +39,7 @@ public struct IOSSourcesView: View {
                                 SourceDetailView(source: source, appState: appState)
                             } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: source.iconSystemName)
+                                    Image(systemName: source.iconSystemName.isEmpty ? "folder.fill" : source.iconSystemName)
                                         .font(.title3)
                                         .foregroundStyle(Color.accentColor)
                                         .frame(width: 28)
