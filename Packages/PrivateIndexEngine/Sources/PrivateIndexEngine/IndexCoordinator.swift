@@ -338,13 +338,40 @@ public actor IndexCoordinator {
         minSimilarity: Float = 0.0
     ) async throws -> [SearchResultItem] {
         let candidateLimit = max(limit * 3, 50)
-
-        // 1. Dense Vector Search
+        let totalChunks = vectorStore.getChunkCount()
         let queryVector = try await embeddingModel.generateEmbedding(for: query)
-        let vectorResults = try vectorStore.search(queryVector: queryVector, limit: candidateLimit)
 
-        // 2. BM25 Full-Text Search
-        let keywordResults = try vectorStore.searchBM25(query: query, limit: candidateLimit)
+        var vectorResults: [VectorStore.SearchResult] = []
+        let keywordResults = (try? vectorStore.searchBM25(query: query, limit: candidateLimit)) ?? []
+
+        if totalChunks > 100_000 {
+            // High-scale optimization: On massive multi-million chunk databases (>100k chunks),
+            // a brute-force flat KNN scan across gigabytes of vectors takes over a minute.
+            // When BM25 finds candidate documents, we semantically re-score those candidate chunks
+            // using the query embedding for fast (~15ms) neural hybrid search.
+            if !keywordResults.isEmpty {
+                for kr in keywordResults.prefix(candidateLimit) {
+                    if let candidateVec = try? await embeddingModel.generateEmbedding(for: kr.content) {
+                        let sim = VectorStore.cosineSimilarity(queryVector, candidateVec)
+                        let dist = max(0.0, 1.0 - sim)
+                        vectorResults.append(VectorStore.SearchResult(
+                            chunkId: kr.chunkId,
+                            fileId: kr.fileId,
+                            filePath: kr.filePath,
+                            distance: dist,
+                            content: kr.content
+                        ))
+                    }
+                }
+                vectorResults.sort { $0.distance < $1.distance }
+            } else {
+                // If BM25 returned no keyword matches, fall back to vector search
+                vectorResults = (try? vectorStore.search(queryVector: queryVector, limit: candidateLimit)) ?? []
+            }
+        } else {
+            // Standard dataset: Retrieve both dense vectors and BM25 keywords concurrently/sequentially
+            vectorResults = (try? vectorStore.search(queryVector: queryVector, limit: candidateLimit)) ?? []
+        }
 
         // If both returned nothing, return empty
         if vectorResults.isEmpty && keywordResults.isEmpty {

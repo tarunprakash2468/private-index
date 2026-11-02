@@ -173,6 +173,10 @@ public final class VectorStore: @unchecked Sendable {
         """)
 
         try execute("""
+            CREATE INDEX IF NOT EXISTS idx_text_chunks_file_id ON text_chunks(file_id);
+        """)
+
+        try execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
                 chunk_id    INTEGER PRIMARY KEY,
                 embedding   float[384] distance_metric=cosine
@@ -551,6 +555,35 @@ public final class VectorStore: @unchecked Sendable {
 
     // MARK: - Search
 
+    /// Returns the total number of vector chunks stored in the database.
+    public func getChunkCount() -> Int {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT count(*) FROM vec_chunks_rowids;", -1, &stmt, nil) == SQLITE_OK else {
+            return 0
+        }
+        defer { sqlite3_finalize(stmt) }
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+        return 0
+    }
+
+    /// Computes the cosine similarity between two float vectors.
+    public static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
+        guard a.count == b.count, !a.isEmpty else { return 0.0 }
+        var dot: Float = 0.0
+        var normA: Float = 0.0
+        var normB: Float = 0.0
+        for i in 0..<a.count {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+        let denom = sqrt(normA) * sqrt(normB)
+        guard denom > 0 else { return 0.0 }
+        return dot / denom
+    }
+
     /// Performs a cosine-distance nearest-neighbor search.
     ///
     /// - Parameters:
@@ -564,12 +597,17 @@ public final class VectorStore: @unchecked Sendable {
         )
 
         let sql = """
-            SELECT vc.chunk_id, f.id, f.path, vc.distance, tc.content
-            FROM vec_chunks vc
-            JOIN text_chunks tc ON tc.id = vc.chunk_id
+            WITH matches AS (
+                SELECT chunk_id, distance
+                FROM vec_chunks
+                WHERE embedding MATCH ? AND k = ?
+                ORDER BY distance
+            )
+            SELECT m.chunk_id, f.id, f.path, m.distance, tc.content
+            FROM matches m
+            JOIN text_chunks tc ON tc.id = m.chunk_id
             JOIN indexed_files f ON f.id = tc.file_id
-            WHERE vc.embedding MATCH ? AND k = ?
-            ORDER BY vc.distance;
+            ORDER BY m.distance;
         """
 
         var stmt: OpaquePointer?

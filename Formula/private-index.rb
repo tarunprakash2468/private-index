@@ -1,14 +1,14 @@
 class PrivateIndex < Formula
   desc "Local, privacy-first semantic document indexing and search CLI (pi)"
   homepage "https://github.com/tarunprakash2468/private-index"
-  version "0.9.0"
+  version "0.9.0-11-gafe55ae"
   license "MIT"
 
   depends_on :macos
   depends_on arch: :arm64
 
   url "https://github.com/tarunprakash2468/private-index/releases/download/v#{version}/private-index-cli-#{version}-darwin-arm64.tar.gz"
-  sha256 "23cf5176cf53fcd5caa4e0510bc0afc534a568bbc478f7dd223ae5affb49b512"
+  sha256 "c0b51a86abee00150b844510e2aaab5bd59f4822be2c548241281adef7047671"
 
   def install
     bin.install "private-index-cli" => "pi"

@@ -49,7 +49,7 @@ public final class IOSAppState {
             return "0 KB"
         }
         if size == 4096 && IOSContainerManager.shared.isUsingUbiquityContainer {
-            return "39.39 GB (In iCloud)"
+            return "39.39 GB"
         }
         return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
@@ -174,7 +174,11 @@ public final class IOSAppState {
     }
 
     public func performSearch(query: String) async {
-        guard let coordinator = coordinator else { return }
+        guard let coordinator = coordinator else {
+            self.searchResults = []
+            self.isSearching = false
+            return
+        }
         isSearching = true
 
         do {

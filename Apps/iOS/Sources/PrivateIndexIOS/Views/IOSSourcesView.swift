@@ -85,27 +85,6 @@ public struct IOSSourcesView: View {
                         )
                     }
                 }
-
-                // Section: Status
-                Section("Status") {
-                    HStack {
-                        Text("Indexing Status")
-                        Spacer()
-                        Text(appState.indexStatusMessage)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if appState.isIndexing {
-                        ProgressView(value: appState.indexProgress)
-                    }
-
-                    HStack {
-                        Text("Total Indexed Files")
-                        Spacer()
-                        Text("\(appState.indexedFiles.count)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
             }
             .navigationTitle("Sources")
             .refreshable {
